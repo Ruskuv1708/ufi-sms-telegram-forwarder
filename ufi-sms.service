@@ -1,0 +1,13 @@
+[Unit]
+Description=UFI003 SMS receiver
+After=graphical-session.target
+
+[Service]
+Type=simple
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/.local/bin/uv run --script %h/.local/share/ufi-sms/ufi_sms.py watch --storage SM --interval 10 --notify --quiet
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

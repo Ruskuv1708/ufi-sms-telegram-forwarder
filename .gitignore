@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.pytest_cache/
+.venv/
+
+# Android build output and local signing material
+android-forwarder/build/
+*.apk
+*.idsig
+*.jks
+*.keystore
+*.password
+
+# Private runtime data
+.env
+.env.*
+telegram.json
+inbox.jsonl
+telegram-sent.txt
+
+# Local diagnostic output
+aved
+*.log
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
