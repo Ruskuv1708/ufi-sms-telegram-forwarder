@@ -144,4 +144,6 @@ you intentionally want duplicate delivery paths.
 
 ## License
 
-[MIT](LICENSE)
+Copyright (c) 2026 Kuvatov Ruslan Baxtiyarovich.
+
+Licensed under the [MIT License](LICENSE).
