@@ -13,6 +13,9 @@ final class Scheduler {
     private Scheduler() {}
 
     static void ensureScheduled(Context context, boolean force) {
+        if (!AppConfig.isEnabled(context)) {
+            return;
+        }
         if (!force && AppConfig.isAlarmSet(context)) {
             return;
         }
@@ -31,5 +34,19 @@ final class Scheduler {
                 pending
         );
         AppConfig.setAlarmSet(context, true);
+    }
+
+    static void cancel(Context context) {
+        AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        Intent intent = new Intent(context, RetryReceiver.class);
+        PendingIntent pending = PendingIntent.getBroadcast(
+                context,
+                1,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT
+        );
+        alarms.cancel(pending);
+        pending.cancel();
+        AppConfig.setAlarmSet(context, false);
     }
 }

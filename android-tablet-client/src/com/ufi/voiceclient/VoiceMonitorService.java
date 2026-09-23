@@ -30,6 +30,8 @@ public final class VoiceMonitorService extends Service {
     static final String ACTION_AUDIO_START = "com.ufi.voiceclient.AUDIO_START";
     static final String ACTION_AUDIO_STOP = "com.ufi.voiceclient.AUDIO_STOP";
     static final String ACTION_SPEAKER = "com.ufi.voiceclient.SPEAKER";
+    static final String ACTION_SMS_SEND = "com.ufi.voiceclient.SMS_SEND";
+    static final String ACTION_SMS_READ = "com.ufi.voiceclient.SMS_READ";
     static final String ACTION_STATUS = "com.ufi.voiceclient.STATUS";
     static final String EXTRA_STATE = "state";
     static final String EXTRA_NETWORK = "network";
@@ -42,14 +44,24 @@ public final class VoiceMonitorService extends Service {
     static final String EXTRA_CALL_READY = "call_ready";
     static final String EXTRA_PREFERRED_MODE = "preferred_mode";
     static final String EXTRA_MODE_RECOVERIES = "mode_recoveries";
+    static final String EXTRA_SMS_ADDRESS = "sms_address";
+    static final String EXTRA_SMS_BODY = "sms_body";
+    static final String EXTRA_SMS_UNREAD = "sms_unread";
+    static final String EXTRA_SMS_REVISION = "sms_revision";
+    static final String EXTRA_SMS_DETAIL = "sms_detail";
+    static final String EXTRA_OPEN_TAB = "open_tab";
 
     private static final String TAG = "UfiCallClient";
     private static final String CHANNEL_MONITOR = "ufi_voice_monitor";
     private static final String CHANNEL_CALLS = "ufi_voice_calls";
     private static final String CHANNEL_GUARD = "ufi_voice_guard";
+    private static final String CHANNEL_MESSAGES = "ufi_sms_messages";
     private static final int NOTIFICATION_MONITOR = 4101;
     private static final int NOTIFICATION_CALL = 4102;
     private static final int NOTIFICATION_GUARD = 4103;
+    private static final int NOTIFICATION_MESSAGE = 4104;
+    private static final String SMS_NOTIFICATION_PREFS = "ufi_sms_notifications";
+    private static final String SMS_LAST_INCOMING_DATE = "last_incoming_date";
 
     private ScheduledExecutorService executor;
     private NotificationManager notifications;
@@ -75,6 +87,9 @@ public final class VoiceMonitorService extends Service {
     private volatile String activeHistoryDirection = "";
     private volatile String activeHistoryState = "";
     private volatile boolean hangupRequested;
+    private volatile int smsUnread;
+    private volatile long smsRevision;
+    private volatile String smsDetail = "Syncing messages";
 
     @Override
     public void onCreate() {
@@ -88,13 +103,19 @@ public final class VoiceMonitorService extends Service {
                 buildMonitorNotification(),
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE);
         acquireLocks();
-        executor = Executors.newScheduledThreadPool(2);
+        executor = Executors.newScheduledThreadPool(3);
         executor.scheduleWithFixedDelay(new Runnable() {
             @Override
             public void run() {
                 pollGateway();
             }
         }, 0, 1, TimeUnit.SECONDS);
+        executor.scheduleWithFixedDelay(new Runnable() {
+            @Override
+            public void run() {
+                pollSms();
+            }
+        }, 1, 5, TimeUnit.SECONDS);
     }
 
     @Override
@@ -132,6 +153,13 @@ public final class VoiceMonitorService extends Service {
             speaker = intent.getBooleanExtra(EXTRA_SPEAKER, true);
             applyAudioRoute();
             broadcastStatus();
+        } else if (ACTION_SMS_SEND.equals(action)) {
+            String address = intent == null ? "" : intent.getStringExtra(EXTRA_SMS_ADDRESS);
+            String body = intent == null ? "" : intent.getStringExtra(EXTRA_SMS_BODY);
+            runSmsSend(address, body);
+        } else if (ACTION_SMS_READ.equals(action)) {
+            String address = intent == null ? "" : intent.getStringExtra(EXTRA_SMS_ADDRESS);
+            runSmsMarkRead(address);
         }
         return START_STICKY;
     }
@@ -228,6 +256,92 @@ public final class VoiceMonitorService extends Service {
             }
             updateStatus("OFFLINE", "", "", message);
         }
+    }
+
+    private void pollSms() {
+        if (stopping || !ClientConfig.enabled(this)) {
+            return;
+        }
+        try {
+            String raw = GatewayClient.smsList(
+                    ClientConfig.host(this), ClientConfig.token(this));
+            boolean changed = SmsStore.replace(this, raw);
+            smsUnread = SmsStore.unreadCount(this);
+            smsRevision = SmsStore.revision(this);
+            smsDetail = "Messages synced directly with modem";
+            SmsMessage newest = SmsStore.newestIncoming(this);
+            maybeShowSmsNotification(newest);
+            if (changed) {
+                Log.i(TAG, "SMS cache updated");
+            }
+            broadcastStatus();
+        } catch (Exception error) {
+            smsDetail = "Messages: " + friendlyError(error);
+            Log.w(TAG, "SMS poll failed: " + error.getClass().getSimpleName());
+            broadcastStatus();
+        }
+    }
+
+    private void runSmsSend(String rawAddress, final String body) {
+        final String address = SmsAddress.normalize(rawAddress);
+        if (address.length() == 0 || body == null || body.trim().length() == 0
+                || body.length() > 2000) {
+            smsDetail = "Enter a valid recipient and message";
+            broadcastStatus();
+            return;
+        }
+        smsDetail = "Sending message";
+        broadcastStatus();
+        executor.execute(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    SmsMessage sent = GatewayClient.smsSend(
+                            ClientConfig.host(VoiceMonitorService.this),
+                            ClientConfig.token(VoiceMonitorService.this),
+                            address,
+                            body);
+                    SmsStore.addSent(VoiceMonitorService.this, sent);
+                    smsUnread = SmsStore.unreadCount(VoiceMonitorService.this);
+                    smsRevision = SmsStore.revision(VoiceMonitorService.this);
+                    smsDetail = "Message sent";
+                    broadcastStatus();
+                    pollSms();
+                } catch (Exception error) {
+                    smsDetail = "Message not sent: " + friendlyError(error);
+                    Log.w(TAG, "SMS send failed: " + error.getClass().getSimpleName());
+                    broadcastStatus();
+                }
+            }
+        });
+    }
+
+    private void runSmsMarkRead(String address) {
+        final String safeAddress = address == null ? "" : address.trim();
+        if (safeAddress.length() == 0 || safeAddress.length() > 80) {
+            return;
+        }
+        SmsStore.markRead(this, safeAddress);
+        smsUnread = SmsStore.unreadCount(this);
+        smsRevision = SmsStore.revision(this);
+        broadcastStatus();
+        executor.execute(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    GatewayClient.smsMarkRead(
+                            ClientConfig.host(VoiceMonitorService.this),
+                            ClientConfig.token(VoiceMonitorService.this),
+                            safeAddress);
+                    pollSms();
+                } catch (Exception error) {
+                    smsDetail = "Could not mark message read: " + friendlyError(error);
+                    Log.w(TAG, "SMS read update failed: "
+                            + error.getClass().getSimpleName());
+                    broadcastStatus();
+                }
+            }
+        });
     }
 
     private synchronized void runDial(final String rawNumber) {
@@ -522,6 +636,9 @@ public final class VoiceMonitorService extends Service {
         status.putExtra(EXTRA_CALL_READY, callReady);
         status.putExtra(EXTRA_PREFERRED_MODE, preferredNetworkMode);
         status.putExtra(EXTRA_MODE_RECOVERIES, Math.max(0, modeRecoveries));
+        status.putExtra(EXTRA_SMS_UNREAD, smsUnread);
+        status.putExtra(EXTRA_SMS_REVISION, smsRevision);
+        status.putExtra(EXTRA_SMS_DETAIL, smsDetail);
         sendBroadcast(status);
     }
 
@@ -620,6 +737,46 @@ public final class VoiceMonitorService extends Service {
         notifications.notify(NOTIFICATION_GUARD, warning);
     }
 
+    private void maybeShowSmsNotification(SmsMessage message) {
+        if (message == null) {
+            return;
+        }
+        long previous = getSharedPreferences(SMS_NOTIFICATION_PREFS, MODE_PRIVATE)
+                .getLong(SMS_LAST_INCOMING_DATE, 0L);
+        if (previous == 0L) {
+            getSharedPreferences(SMS_NOTIFICATION_PREFS, MODE_PRIVATE)
+                    .edit().putLong(SMS_LAST_INCOMING_DATE, message.date).apply();
+            return;
+        }
+        if (message.date <= previous) {
+            return;
+        }
+
+        Intent openIntent = new Intent(this, MainActivity.class);
+        openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        openIntent.putExtra(EXTRA_OPEN_TAB, "messages");
+        openIntent.putExtra(EXTRA_SMS_ADDRESS, message.address);
+        PendingIntent open = PendingIntent.getActivity(
+                this,
+                100 + Math.abs(message.address.hashCode() % 10000),
+                openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        String sender = message.address.length() == 0 ? "Unknown sender" : message.address;
+        Notification notification = new Notification.Builder(this, CHANNEL_MESSAGES)
+                .setSmallIcon(R.drawable.ic_message)
+                .setContentTitle("New SMS from " + sender)
+                .setContentText(message.body)
+                .setStyle(new Notification.BigTextStyle().bigText(message.body))
+                .setContentIntent(open)
+                .setCategory(Notification.CATEGORY_MESSAGE)
+                .setAutoCancel(true)
+                .setVisibility(Notification.VISIBILITY_PRIVATE)
+                .build();
+        notifications.notify(NOTIFICATION_MESSAGE, notification);
+        getSharedPreferences(SMS_NOTIFICATION_PREFS, MODE_PRIVATE)
+                .edit().putLong(SMS_LAST_INCOMING_DATE, message.date).apply();
+    }
+
     private void createNotificationChannels() {
         NotificationChannel monitor = new NotificationChannel(
                 CHANNEL_MONITOR, "Modem call connection", NotificationManager.IMPORTANCE_LOW);
@@ -643,6 +800,12 @@ public final class VoiceMonitorService extends Service {
         guard.setSound(null, null);
         guard.enableVibration(true);
         notifications.createNotificationChannel(guard);
+
+        NotificationChannel messages = new NotificationChannel(
+                CHANNEL_MESSAGES, "Modem SMS messages", NotificationManager.IMPORTANCE_HIGH);
+        messages.setDescription("Messages received by the UFI modem");
+        messages.enableVibration(true);
+        notifications.createNotificationChannel(messages);
     }
 
     @SuppressWarnings("deprecation")

@@ -9,6 +9,9 @@ import android.net.NetworkInfo;
 public final class ConnectivityReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
+        if (!AppConfig.isEnabled(context)) {
+            return;
+        }
         ConnectivityManager connectivity = (ConnectivityManager) context.getSystemService(
                 Context.CONNECTIVITY_SERVICE
         );

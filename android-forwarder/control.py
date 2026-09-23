@@ -17,6 +17,8 @@ ACTIONS = {
     "status": PACKAGE + ".STATUS",
     "test": PACKAGE + ".TEST",
     "drain": PACKAGE + ".DRAIN",
+    "enable": PACKAGE + ".ENABLE",
+    "disable": PACKAGE + ".DISABLE",
 }
 TOKEN_PATTERN = re.compile(r"^[0-9]+:[A-Za-z0-9_-]+$")
 
@@ -36,16 +38,22 @@ def telegram_config() -> tuple[str, str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("configure", "status", "test", "drain"))
+    parser.add_argument("--serial", help="ADB serial of the UFI modem")
+    parser.add_argument(
+        "command",
+        choices=("configure", "status", "test", "drain", "enable", "disable"),
+    )
     args = parser.parse_args()
 
-    command = [
-        "adb",
+    command = ["adb"]
+    if args.serial:
+        command.extend(["-s", args.serial])
+    command.extend([
         "shell",
         "am",
         "broadcast",
         "--include-stopped-packages",
-    ]
+    ])
     if args.command == "configure":
         token, chat_id = telegram_config()
         action = PACKAGE + ".CONFIGURE"

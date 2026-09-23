@@ -1,4 +1,4 @@
-package com.ufi.smsforwarder;
+package com.ufi.voicegateway;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -8,23 +8,19 @@ import android.telephony.SmsMessage;
 import android.util.Log;
 
 public final class SmsReceiver extends BroadcastReceiver {
-    private static final String TAG = "UfiSmsForwarder";
+    private static final String TAG = "UfiVoiceGateway";
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (!AppConfig.isEnabled(context)) {
-            return;
-        }
         Bundle extras = intent == null ? null : intent.getExtras();
         Object[] pdus = extras == null ? null : (Object[]) extras.get("pdus");
         if (pdus == null || pdus.length == 0) {
             Log.w(TAG, "SMS broadcast had no PDU data");
-            ForwardService.requestDrain(context);
             return;
         }
 
         String sender = null;
-        long receivedAt = System.currentTimeMillis();
+        long receivedAt = 0L;
         StringBuilder body = new StringBuilder();
         for (Object item : pdus) {
             if (!(item instanceof byte[])) {
@@ -37,15 +33,26 @@ public final class SmsReceiver extends BroadcastReceiver {
             if (sender == null) {
                 sender = part.getOriginatingAddress();
             }
+            if (receivedAt <= 0L) {
+                receivedAt = part.getTimestampMillis();
+            }
             String partBody = part.getMessageBody();
             if (partBody != null) {
                 body.append(partBody);
             }
         }
         if (sender == null && body.length() == 0) {
-            ForwardService.requestDrain(context);
             return;
         }
-        ForwardService.enqueue(context, sender, receivedAt, body.toString());
+
+        SmsDb database = new SmsDb(context);
+        try {
+            long result = database.insertIncoming(sender, receivedAt, body.toString());
+            if (result != -1L) {
+                Log.i(TAG, "incoming SMS stored locally");
+            }
+        } finally {
+            database.close();
+        }
     }
 }

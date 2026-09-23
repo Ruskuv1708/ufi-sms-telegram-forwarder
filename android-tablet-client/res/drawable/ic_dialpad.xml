@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Material Icons, licensed under Apache License 2.0. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,19L14,19L14,21L12,21L12,19ZM16,19L18,19L18,21L16,21L16,19ZM8,19L10,19L10,21L8,21L8,19ZM12,15L14,15L14,17L12,17L12,15ZM16,15L18,15L18,17L16,17L16,15ZM8,15L10,15L10,17L8,17L8,15ZM12,11L14,11L14,13L12,13L12,11ZM16,11L18,11L18,13L16,13L16,11ZM8,11L10,11L10,13L8,13L8,11ZM12,7L14,7L14,9L12,9L12,7ZM16,7L18,7L18,9L16,9L16,7ZM8,7L10,7L10,9L8,9L8,7ZM12,3L14,3L14,5L12,5L12,3ZM16,3L18,3L18,5L16,5L16,3ZM8,3L10,3L10,5L8,5L8,3Z" />
+</vector>

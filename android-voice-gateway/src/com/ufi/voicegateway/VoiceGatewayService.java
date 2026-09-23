@@ -204,12 +204,18 @@ public final class VoiceGatewayService extends Service {
             writeLine(output, "ERR AUTH");
             return;
         }
-        String rawCommand = readLine(input, 128).trim();
+        String rawCommand = readLine(input, 16384).trim();
         String command = rawCommand.toUpperCase(Locale.US);
         if ("PING".equals(command)) {
             writeLine(output, "OK PONG");
         } else if ("STATUS".equals(command)) {
             writeLine(output, "OK " + statusJson());
+        } else if ("SMS_LIST".equals(command)) {
+            handleSmsList(output);
+        } else if (command.startsWith("SMS_SEND ")) {
+            handleSmsSend(rawCommand, output);
+        } else if (command.startsWith("SMS_READ ")) {
+            handleSmsRead(rawCommand, output);
         } else if (command.startsWith("DIAL")) {
             handleDial(rawCommand, output);
         } else if ("ANSWER".equals(command)) {
@@ -222,6 +228,55 @@ public final class VoiceGatewayService extends Service {
             writeLine(output, CallController.hangup() ? "OK" : "ERR HANGUP_FAILED");
         } else {
             writeLine(output, "ERR COMMAND");
+        }
+    }
+
+    private void handleSmsList(OutputStream output) throws IOException {
+        try {
+            writeLine(output, "OK " + SmsController.listJson(this, 250));
+        } catch (SecurityException error) {
+            writeLine(output, "ERR SMS_PERMISSION");
+        } catch (Exception error) {
+            Log.w(TAG, "SMS list failed: " + error.getClass().getSimpleName());
+            writeLine(output, "ERR SMS_READ_FAILED");
+        }
+    }
+
+    private void handleSmsSend(String rawCommand, OutputStream output) throws IOException {
+        String payload = rawCommand.substring("SMS_SEND ".length()).trim();
+        int separator = payload.indexOf(' ');
+        if (separator <= 0 || separator >= payload.length() - 1) {
+            writeLine(output, "ERR BAD_SMS");
+            return;
+        }
+        try {
+            String message = SmsController.sendEncoded(
+                    this,
+                    payload.substring(0, separator),
+                    payload.substring(separator + 1));
+            writeLine(output, "OK " + message);
+        } catch (IllegalArgumentException error) {
+            writeLine(output, "ERR BAD_SMS");
+        } catch (SecurityException error) {
+            writeLine(output, "ERR SMS_PERMISSION");
+        } catch (Exception error) {
+            Log.w(TAG, "SMS send failed: " + error.getClass().getSimpleName());
+            writeLine(output, "ERR SMS_SEND_FAILED");
+        }
+    }
+
+    private void handleSmsRead(String rawCommand, OutputStream output) throws IOException {
+        String encodedAddress = rawCommand.substring("SMS_READ ".length()).trim();
+        try {
+            int updated = SmsController.markReadEncoded(this, encodedAddress);
+            writeLine(output, "OK " + updated);
+        } catch (IllegalArgumentException error) {
+            writeLine(output, "ERR BAD_SMS");
+        } catch (SecurityException error) {
+            writeLine(output, "ERR SMS_PERMISSION");
+        } catch (Exception error) {
+            Log.w(TAG, "SMS read update failed: " + error.getClass().getSimpleName());
+            writeLine(output, "ERR SMS_READ_FAILED");
         }
     }
 

@@ -1,5 +1,7 @@
 package com.ufi.voiceclient;
 
+import android.util.Base64;
+
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -11,6 +13,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 
 final class GatewayClient {
+    private static final int MAX_CONTROL_RESPONSE = 1024 * 1024;
     static final int CONTROL_PORT = 8765;
     static final int DOWNLINK_PORT = 8766;
     static final int UPLINK_PORT = 8767;
@@ -64,7 +67,7 @@ final class GatewayClient {
         try {
             session.output.write((command + "\n").getBytes(StandardCharsets.US_ASCII));
             session.output.flush();
-            String response = readLine(session.input, 8192);
+            String response = readLine(session.input, MAX_CONTROL_RESPONSE);
             if ("OK".equals(response)) {
                 return "";
             }
@@ -87,6 +90,20 @@ final class GatewayClient {
                 json.optBoolean("callReady", true),
                 json.optInt("preferredNetworkMode", 9),
                 json.optInt("modeRecoveries", 0));
+    }
+
+    static String smsList(String host, String token) throws Exception {
+        return control(host, token, "SMS_LIST");
+    }
+
+    static SmsMessage smsSend(String host, String token, String address, String body)
+            throws Exception {
+        String command = "SMS_SEND " + encode(address) + " " + encode(body);
+        return SmsMessage.parseOne(control(host, token, command));
+    }
+
+    static void smsMarkRead(String host, String token, String address) throws Exception {
+        control(host, token, "SMS_READ " + encode(address));
     }
 
     static Session open(String host, String token, int port) throws Exception {
@@ -115,5 +132,11 @@ final class GatewayClient {
             throw new IOException("Gateway response was too long");
         }
         return buffer.toString("UTF-8");
+    }
+
+    private static String encode(String value) {
+        return Base64.encodeToString(
+                value.getBytes(StandardCharsets.UTF_8),
+                Base64.URL_SAFE | Base64.NO_WRAP);
     }
 }

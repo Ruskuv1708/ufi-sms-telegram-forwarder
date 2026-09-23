@@ -26,6 +26,9 @@ public final class ForwardService extends IntentService {
     }
 
     static void enqueue(Context context, String sender, long receivedAt, String body) {
+        if (!AppConfig.isEnabled(context)) {
+            return;
+        }
         Intent intent = new Intent(context, ForwardService.class);
         intent.setAction(ACTION_ENQUEUE);
         intent.putExtra(EXTRA_SENDER, sender);
@@ -35,12 +38,18 @@ public final class ForwardService extends IntentService {
     }
 
     static void requestDrain(Context context) {
+        if (!AppConfig.isEnabled(context)) {
+            return;
+        }
         Intent intent = new Intent(context, ForwardService.class);
         intent.setAction(ACTION_DRAIN);
         context.startService(intent);
     }
 
     static void requestTest(Context context, String text) {
+        if (!AppConfig.isEnabled(context)) {
+            return;
+        }
         Intent intent = new Intent(context, ForwardService.class);
         intent.setAction(ACTION_TEST);
         intent.putExtra(EXTRA_TEST_TEXT, text);
@@ -49,6 +58,9 @@ public final class ForwardService extends IntentService {
 
     @Override
     protected void onHandleIntent(Intent intent) {
+        if (!AppConfig.isEnabled(this)) {
+            return;
+        }
         PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
         PowerManager.WakeLock lock = power.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,

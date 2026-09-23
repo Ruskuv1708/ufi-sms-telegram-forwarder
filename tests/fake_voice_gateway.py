@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hmac
 import json
 import math
@@ -27,6 +28,8 @@ class TestState:
         self.lock = threading.Lock()
         self.uplink_complete = threading.Event()
         self.uplink_result: tuple[int, int, int, float] | None = None
+        self.messages: list[dict[str, object]] = []
+        self.next_message_id = 1
 
     def get(self) -> str:
         with self.lock:
@@ -48,6 +51,27 @@ class TestState:
                     self.number = number
                 if direction is not None:
                     self.direction = direction
+
+    def sms_list(self) -> dict[str, object]:
+        with self.lock:
+            return {
+                "messages": list(reversed(self.messages[-250:])),
+                "count": min(len(self.messages), 250),
+            }
+
+    def sms_send(self, address: str, body: str) -> dict[str, object]:
+        with self.lock:
+            message: dict[str, object] = {
+                "id": self.next_message_id,
+                "address": address,
+                "body": body,
+                "date": int(time.time() * 1000),
+                "type": 2,
+                "read": True,
+            }
+            self.next_message_id += 1
+            self.messages.append(message)
+            return message
 
 
 def read_line(stream: BinaryIO, maximum: int = 8192) -> str:
@@ -93,9 +117,11 @@ class ControlHandler(AuthenticatedHandler):
         if not self.authenticate():
             self.send_line("ERR AUTH")
             return
-        raw_command = read_line(self.rfile, 128).strip()
+        raw_command = read_line(self.rfile, 16384).strip()
         command = raw_command.upper()
-        if command != "STATUS":
+        if (command not in {"STATUS", "SMS_LIST"}
+                and not command.startswith("SMS_SEND ")
+                and not command.startswith("SMS_READ ")):
             print(f"CONTROL {command}", flush=True)
         state, number, direction = self.state.snapshot()
         if command == "PING":
@@ -108,7 +134,27 @@ class ControlHandler(AuthenticatedHandler):
                 "direction": direction,
                 "downlinkBusy": False,
                 "uplinkBusy": False,
+                "callReady": True,
+                "preferredNetworkMode": 9,
+                "modeRecoveries": 0,
             }, separators=(",", ":")))
+        elif command == "SMS_LIST":
+            self.send_line("OK " + json.dumps(
+                self.state.sms_list(), separators=(",", ":")))
+        elif command.startswith("SMS_SEND "):
+            try:
+                encoded_address, encoded_body = raw_command[9:].split(" ", 1)
+                address = base64.urlsafe_b64decode(encoded_address).decode("utf-8")
+                body = base64.urlsafe_b64decode(encoded_body).decode("utf-8")
+                if not address.strip() or not body.strip():
+                    raise ValueError("empty SMS")
+            except (ValueError, UnicodeDecodeError):
+                self.send_line("ERR BAD_SMS")
+                return
+            self.send_line("OK " + json.dumps(
+                self.state.sms_send(address, body), separators=(",", ":")))
+        elif command.startswith("SMS_READ "):
+            self.send_line("OK")
         elif command == "ANSWER" and state == "RINGING":
             self.state.set("ACTIVE")
             self.send_line("OK")

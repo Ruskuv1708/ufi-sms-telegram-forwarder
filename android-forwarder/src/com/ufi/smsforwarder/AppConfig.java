@@ -11,6 +11,7 @@ final class AppConfig {
     private static final String KEY_LAST_SUCCESS = "last_success_ms";
     private static final String KEY_LAST_ERROR = "last_error";
     private static final String KEY_ALARM_SET = "alarm_set";
+    private static final String KEY_ENABLED = "enabled";
 
     static final class Snapshot {
         final String token;
@@ -45,9 +46,18 @@ final class AppConfig {
         return prefs(context).edit()
                 .putString(KEY_TOKEN, token)
                 .putString(KEY_CHAT_ID, chatId)
+                .putBoolean(KEY_ENABLED, true)
                 .putLong(KEY_LAST_SCAN, now)
                 .remove(KEY_LAST_ERROR)
                 .commit();
+    }
+
+    static boolean isEnabled(Context context) {
+        return prefs(context).getBoolean(KEY_ENABLED, false);
+    }
+
+    static boolean setEnabled(Context context, boolean enabled) {
+        return prefs(context).edit().putBoolean(KEY_ENABLED, enabled).commit();
     }
 
     static long getLastScan(Context context) {

@@ -1,34 +1,34 @@
-# UFI SMS Telegram Forwarder and Call Gateway
+# UFI Phone and SMS Gateway
 
-SMS forwarding and cellular-call support for Qualcomm-based UFI003 LTE USB
-modems. The project runs privileged services on the modem's embedded Android
-4.4 system and provides clients for Linux and Android tablets.
+Direct SMS and cellular-call support for Qualcomm-based UFI003 LTE USB modems.
+The project runs privileged services on the modem's embedded Android 4.4
+system and provides clients for Android tablets and Linux.
 
-The modem-resident Android app is the recommended mode: it survives computer
-shutdowns and USB reconnects, starts after modem reboot, keeps a persistent
-delivery queue, retries after network failures, and suppresses duplicate SMS
-notifications.
+The recommended interface is the **UFI Phone** tablet app. It reads and sends
+SMS directly through the modem's private LAN, places and receives ordinary
+cellular calls, carries two-way call audio, and keeps local call history. It
+does not require Telegram or another cloud service.
 
-The optional voice gateway places calls from a connected Android tablet,
-rings on a tablet or Linux computer for incoming calls, and carries two-way
-audio over the modem's private Wi-Fi LAN.
+The older SMS-to-Telegram forwarder remains available as an optional,
+independent compatibility path.
 
 ## Features
 
-- Receives Android `SMS_RECEIVED` broadcasts and periodically scans the inbox
-  as a recovery path.
-- Forwards sender, timestamp, and message text through the Telegram Bot API.
-- Keeps failed deliveries in a private SQLite queue and retries every five
-  minutes or when connectivity returns.
-- Runs automatically after the modem reboots.
-- Stores the Telegram token in Android private app data, never in source code
-  or the APK.
+- Reads stored SIM messages and captures new `SMS_RECEIVED` broadcasts on the
+  modem.
+- Displays conversations and sends SMS directly in the UFI Phone tablet app.
+- Uses an authenticated, LAN-only connection between the tablet and modem;
+  SMS contents do not need to leave the local network.
+- Runs automatically after modem and tablet reboots.
 - Includes a Linux CLI for reading, archiving, deleting, and forwarding SMS
   over the modem's Qualcomm USB AT interface.
 - Displays incoming cellular calls on an Android tablet with a full-screen
   alert, caller number, Answer and Hang up controls, and two-way audio.
 - Places ordinary cellular calls from the tablet and keeps the latest 100
   incoming and outgoing call records locally on that tablet.
+- Keeps the latest 250 synced SMS records in the tablet's private app data.
+- Optionally forwards SMS through the Telegram Bot API with a persistent retry
+  queue when the legacy forwarder is enabled.
 - Provides a small Linux call window and matching command-line controls.
 - Detects and repairs the firmware's LTE-only reset after a cold boot, and
   displays a persistent recovery count in the tablet UI.
@@ -47,17 +47,58 @@ variants. Verify the USB ID and Android/ADB availability before installing.
 ## Repository layout
 
 ```text
-android-forwarder/       Headless Android 4.4 SMS-to-Telegram app
+android-forwarder/       Optional headless Android 4.4 Telegram forwarder
 android-network-guard/   Phone-UID radio-mode recovery service
-android-voice-gateway/   System-UID call control and audio LAN gateway
-android-tablet-client/   Android 8+ cellular-call client
+android-voice-gateway/   System-UID call, SMS, and audio LAN gateway
+android-tablet-client/   Android 8+ UFI Phone app for calls and SMS
 tests/                   Local voice-client integration fixture
 ufi_sms.py               Linux USB/AT SMS receiver and fallback forwarder
 ufi_voice.py             Linux voice setup, CLI, and desktop window
 ufi-sms.service          Optional systemd user service for SMS fallback
 ```
 
-## SMS forwarding on the modem
+## Direct calls and SMS on the tablet
+
+### Requirements
+
+- The exact tested UFI003 hardware and firmware listed above
+- ADB access to the modem and tablet for installation
+- JDK 17 and Android SDK platform/build-tools 35.0.0
+- Android SDK platform 19 for the modem and platform 35 for the tablet
+- Platform signing keys matching the modem's firmware certificate
+- An Android 8+ tablet connected to the modem's `192.168.100.0/24` LAN
+
+### Build and pair
+
+```bash
+./android-network-guard/build.sh
+./android-voice-gateway/build.sh
+./android-tablet-client/build.sh
+
+./ufi_voice.py setup --modem-serial MODEM_ADB_SERIAL
+./ufi_voice.py setup-tablet --tablet-serial TABLET_ADB_SERIAL
+```
+
+`setup` generates a random 256-bit LAN token and stores it in
+`~/.config/ufi-voice-gateway/client.json` with user-only permissions. The
+token is transferred through ADB-only configuration components and is never
+embedded in source code or an APK. Tablet setup also grants microphone and
+notification permissions and exempts the foreground monitor from Android
+idle mode.
+
+Open **UFI Phone** on the tablet:
+
+- **Calls** shows recent incoming, outgoing, and missed calls.
+- **Keypad** places an ordinary carrier call. Emergency numbers, short codes,
+  and service codes are deliberately blocked.
+- **Messages** displays SMS stored by the modem and sends replies through the
+  SIM. New messages produce a local tablet notification.
+
+SMS and call commands are accepted only from the modem's private
+`192.168.100.0/24` LAN and require the pairing token. Normal carrier charges
+can apply to outgoing calls and SMS.
+
+## Optional Telegram forwarding
 
 ### Requirements
 
@@ -91,22 +132,28 @@ bot, and run the private setup assistant. Token input is hidden:
 
 ```bash
 ./ufi_sms.py telegram-setup --no-restart
-./android-forwarder/control.py configure
+./android-forwarder/control.py --serial MODEM_ADB_SERIAL configure
 ```
 
 Useful checks:
 
 ```bash
-./android-forwarder/control.py status
-./android-forwarder/control.py test
-./android-forwarder/control.py drain
+./android-forwarder/control.py --serial MODEM_ADB_SERIAL status
+./android-forwarder/control.py --serial MODEM_ADB_SERIAL test
+./android-forwarder/control.py --serial MODEM_ADB_SERIAL drain
+./android-forwarder/control.py --serial MODEM_ADB_SERIAL disable
+./android-forwarder/control.py --serial MODEM_ADB_SERIAL enable
 ```
 
 `control.py` reads `~/.config/ufi-sms/telegram.json`, requires private file
 permissions, and transfers the configuration over ADB without printing the
 token or placing it in shell history.
 
-The app has no launcher window. Telegram is its user interface.
+The forwarder has no launcher window. Telegram is its user interface. It is
+not needed when using UFI Phone, and it should normally remain disabled to
+avoid sending private SMS contents to a cloud service. `disable` cancels the
+retry alarm and stops forwarding across reboots without deleting the bot
+token, chat ID, or queue; `enable` resumes the preserved configuration.
 
 ## Linux fallback
 
@@ -144,7 +191,7 @@ systemctl --user enable --now ufi-sms.service
 Do not run the Linux watcher and the Android forwarder at the same time unless
 you intentionally want duplicate delivery paths.
 
-## Cellular-call gateway
+## Cellular-call details
 
 ### Important network limitation
 
@@ -159,39 +206,12 @@ LTE/GSM/WCDMA mode at boot, again after 30 seconds, 2 minutes, and 5 minutes,
 and then periodically as a safety check. The tablet displays both current call
 readiness and the number of times an unsafe LTE-only setting was recovered.
 
-### Voice requirements
-
-- The exact tested UFI003 hardware and firmware listed above
-- ADB access to the modem for installation
-- JDK 17, Android SDK platform 19 and build-tools 35.0.0
-- Android SDK platform 35 to build the tablet client
-- Platform signing keys matching the modem's firmware certificate
-- A tablet or Linux computer connected to the modem's `192.168.100.0/24` LAN
-
 The tested firmware was signed with the public AOSP Android 4.4 platform test
 certificate. The build scripts expect matching keys under
 `~/.cache/ufi-sms-android/aosp-platform/` and verify the certificate
 fingerprint before signing. Platform-signed applications are highly
 privileged. Do not install these APKs on unrelated hardware or use a key that
 does not exactly match a device you own.
-
-### Build and pair
-
-```bash
-./android-network-guard/build.sh
-./android-voice-gateway/build.sh
-./android-tablet-client/build.sh
-
-./ufi_voice.py setup --modem-serial MODEM_ADB_SERIAL
-./ufi_voice.py setup-tablet --tablet-serial TABLET_ADB_SERIAL
-```
-
-`setup` generates a random 256-bit LAN token and stores it in
-`~/.config/ufi-voice-gateway/client.json` with user-only permissions. The
-token is transferred through an ADB-only configuration component; it is not
-embedded in source code or an APK. Tablet setup also grants the required
-microphone and notification permissions and exempts the foreground call
-monitor from Android idle mode.
 
 ### Use from Linux
 
@@ -208,16 +228,14 @@ means LTE-only and incoming calls may be reported as busy until the guard
 repairs it.
 
 The tablet client keeps a visible foreground notification so Android does not
-suspend call monitoring. Use headphones when practical to reduce acoustic
-echo. Only one audio client can use a call at a time. To place a call, enter an
-ordinary 6-to-20-digit phone number in the tablet app and tap **Call**. The
-tablet stores the latest 100 call records in its private app data; tap a
-history row to copy that number back into the dial field.
+suspend call or SMS monitoring. Use headphones when practical to reduce
+acoustic echo. Only one audio client can use a call at a time.
 
 ### Current voice scope
 
 - Incoming and outgoing calls, caller display, answer, hang up, ringtone, and
   two-way audio
+- Direct SMS inbox, conversation view, local notifications, and sending
 - Local tablet call history with direction, result, time, and approximate
   connected duration
 - Automatic LTE-to-HSPA call fallback and return to LTE data
@@ -233,6 +251,8 @@ operator charges.
 
 - Never commit or paste a Telegram bot token. Revoke any token that has been
   exposed.
+- Direct UFI Phone SMS stays on the modem's private LAN and does not use
+  Telegram.
 - Local Telegram configuration and archived SMS data are created with private
   file permissions.
 - The Android app uses the modem's system `curl` with a bundled trusted root
@@ -244,8 +264,9 @@ operator charges.
   permission; ordinary installed apps cannot reconfigure it.
 - Voice servers bind only to `192.168.100.1`, reject clients outside the local
   `/24`, and require the random token before every control or audio session.
-- Caller numbers and call audio remain on the local modem LAN. The voice
-  components do not send them to Telegram or any cloud service.
+- SMS, caller numbers, and call audio remain on the local modem LAN when using
+  UFI Phone. The call/SMS gateway does not send them to Telegram or any cloud
+  service.
 
 ## License
 

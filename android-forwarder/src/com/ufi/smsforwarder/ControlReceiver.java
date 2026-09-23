@@ -12,6 +12,8 @@ public final class ControlReceiver extends BroadcastReceiver {
     private static final String ACTION_STATUS = "com.ufi.smsforwarder.STATUS";
     private static final String ACTION_TEST = "com.ufi.smsforwarder.TEST";
     private static final String ACTION_DRAIN = "com.ufi.smsforwarder.DRAIN";
+    private static final String ACTION_ENABLE = "com.ufi.smsforwarder.ENABLE";
+    private static final String ACTION_DISABLE = "com.ufi.smsforwarder.DISABLE";
     private static final Pattern TOKEN = Pattern.compile("[0-9]+:[A-Za-z0-9_-]+");
 
     @Override
@@ -50,6 +52,7 @@ public final class ControlReceiver extends BroadcastReceiver {
             AppConfig.Snapshot config = AppConfig.load(context);
             String error = AppConfig.getLastError(context);
             String status = "configured=" + config.isConfigured()
+                    + "; enabled=" + AppConfig.isEnabled(context)
                     + "; queued=" + count
                     + "; last_success_ms=" + AppConfig.getLastSuccess(context)
                     + "; last_error=" + (error.length() == 0 ? "none" : error);
@@ -58,6 +61,10 @@ public final class ControlReceiver extends BroadcastReceiver {
         }
 
         if (ACTION_TEST.equals(action)) {
+            if (!AppConfig.isEnabled(context)) {
+                finish(Activity.RESULT_CANCELED, "forwarding disabled");
+                return;
+            }
             if (!AppConfig.load(context).isConfigured()) {
                 finish(Activity.RESULT_CANCELED, "not configured");
                 return;
@@ -73,8 +80,38 @@ public final class ControlReceiver extends BroadcastReceiver {
         }
 
         if (ACTION_DRAIN.equals(action)) {
+            if (!AppConfig.isEnabled(context)) {
+                finish(Activity.RESULT_CANCELED, "forwarding disabled");
+                return;
+            }
             ForwardService.requestDrain(context);
             finish(Activity.RESULT_OK, "queue drain requested");
+            return;
+        }
+
+        if (ACTION_ENABLE.equals(action)) {
+            if (!AppConfig.load(context).isConfigured()) {
+                finish(Activity.RESULT_CANCELED, "not configured");
+                return;
+            }
+            if (!AppConfig.setEnabled(context, true)) {
+                finish(Activity.RESULT_CANCELED, "could not enable forwarding");
+                return;
+            }
+            Scheduler.ensureScheduled(context, true);
+            ForwardService.requestDrain(context);
+            finish(Activity.RESULT_OK, "forwarding enabled");
+            return;
+        }
+
+        if (ACTION_DISABLE.equals(action)) {
+            if (!AppConfig.setEnabled(context, false)) {
+                finish(Activity.RESULT_CANCELED, "could not disable forwarding");
+                return;
+            }
+            Scheduler.cancel(context);
+            context.stopService(new Intent(context, ForwardService.class));
+            finish(Activity.RESULT_OK, "forwarding disabled; configuration preserved");
             return;
         }
 
