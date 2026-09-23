@@ -7,6 +7,10 @@ __pycache__/
 
 # Android build output and local signing material
 android-forwarder/build/
+android-audio-probe/build/
+android-network-guard/build/
+android-tablet-client/build/
+android-voice-gateway/build/
 *.apk
 *.idsig
 *.jks
