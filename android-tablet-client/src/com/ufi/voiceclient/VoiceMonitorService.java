@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 
 public final class VoiceMonitorService extends Service {
     static final String ACTION_START = "com.ufi.voiceclient.START";
+    static final String ACTION_DIAL = "com.ufi.voiceclient.DIAL";
     static final String ACTION_ANSWER = "com.ufi.voiceclient.ANSWER";
     static final String ACTION_HANGUP = "com.ufi.voiceclient.HANGUP";
     static final String ACTION_AUDIO_START = "com.ufi.voiceclient.AUDIO_START";
@@ -33,6 +34,8 @@ public final class VoiceMonitorService extends Service {
     static final String EXTRA_STATE = "state";
     static final String EXTRA_NETWORK = "network";
     static final String EXTRA_CALLER = "caller";
+    static final String EXTRA_DIRECTION = "direction";
+    static final String EXTRA_DIAL_NUMBER = "dial_number";
     static final String EXTRA_DETAIL = "detail";
     static final String EXTRA_AUDIO = "audio";
     static final String EXTRA_SPEAKER = "speaker";
@@ -60,17 +63,25 @@ public final class VoiceMonitorService extends Service {
     private volatile String state = "CONNECTING";
     private volatile String network = "";
     private volatile String caller = "";
+    private volatile String direction = "";
     private volatile String detail = "Connecting to the modem";
     private volatile String audioState = "OFF";
     private volatile boolean callReady = true;
     private volatile int preferredNetworkMode = -1;
     private volatile int modeRecoveries = -1;
+    private volatile String pendingOutgoingNumber = "";
+    private volatile long pendingDialAt;
+    private volatile String activeHistoryId = "";
+    private volatile String activeHistoryDirection = "";
+    private volatile String activeHistoryState = "";
+    private volatile boolean hangupRequested;
 
     @Override
     public void onCreate() {
         super.onCreate();
         notifications = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        CallHistoryStore.markStaleInProgress(this, System.currentTimeMillis());
         createNotificationChannels();
         startForeground(
                 NOTIFICATION_MONITOR,
@@ -89,13 +100,17 @@ public final class VoiceMonitorService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? ACTION_START : intent.getAction();
-        if (ACTION_ANSWER.equals(action)) {
+        if (ACTION_DIAL.equals(action)) {
+            String number = intent == null ? "" : intent.getStringExtra(EXTRA_DIAL_NUMBER);
+            runDial(number);
+        } else if (ACTION_ANSWER.equals(action)) {
             Log.i(TAG, "answer requested");
             autoStartAudio = true;
             runControl("ANSWER");
         } else if (ACTION_HANGUP.equals(action)) {
             Log.i(TAG, "hangup requested");
             autoStartAudio = false;
+            hangupRequested = true;
             runControl("HANGUP");
         } else if (ACTION_AUDIO_START.equals(action)) {
             Log.i(TAG, "audio requested");
@@ -149,17 +164,38 @@ public final class VoiceMonitorService extends Service {
             GatewayClient.Status status = GatewayClient.status(
                     ClientConfig.host(this), ClientConfig.token(this));
             String previous = state;
-            state = status.state;
+            String nextState = status.state;
+            String nextDirection = resolveDirection(
+                    status.direction, status.caller, nextState);
+            String nextCaller = status.caller;
+            long now = System.currentTimeMillis();
+            if ("IDLE".equals(nextState)
+                    && pendingDialAt > 0L
+                    && now - pendingDialAt < 30000L) {
+                nextState = "DIALING";
+                nextDirection = CallHistoryStore.DIRECTION_OUTGOING;
+                nextCaller = pendingOutgoingNumber;
+            } else if (nextCaller.length() == 0
+                    && pendingOutgoingNumber.length() > 0
+                    && ("DIALING".equals(nextState) || "ACTIVE".equals(nextState))) {
+                nextCaller = pendingOutgoingNumber;
+            }
+            state = nextState;
             network = status.network;
-            caller = status.caller;
+            caller = nextCaller;
+            direction = nextDirection;
             boolean previousCallReady = callReady;
             int previousRecoveries = modeRecoveries;
             callReady = status.callReady;
             preferredNetworkMode = status.preferredNetworkMode;
             modeRecoveries = status.modeRecoveries;
-            detail = callReady
-                    ? "Connected to modem"
-                    : "LTE-only mode detected; guard is correcting it";
+            if ("DIALING".equals(state) && caller.length() > 0) {
+                detail = "Dialing " + caller;
+            } else {
+                detail = callReady
+                        ? "Connected to modem"
+                        : "LTE-only mode detected; guard is correcting it";
+            }
             if (!callReady && previousCallReady) {
                 showModeWarning(false);
             } else if (callReady && previousRecoveries >= 0
@@ -173,6 +209,7 @@ public final class VoiceMonitorService extends Service {
             } else {
                 notifications.cancel(NOTIFICATION_CALL);
             }
+            updateHistory(previous, state, direction, caller, now);
             if ("ACTIVE".equals(state) && autoStartAudio && audioBridge == null) {
                 autoStartAudio = false;
                 startAudio();
@@ -191,6 +228,65 @@ public final class VoiceMonitorService extends Service {
             }
             updateStatus("OFFLINE", "", "", message);
         }
+    }
+
+    private synchronized void runDial(final String rawNumber) {
+        final String number = DialNumber.normalize(rawNumber);
+        if (number.length() == 0) {
+            detail = "Enter a normal phone number first";
+            notifyAndBroadcast();
+            return;
+        }
+        if (!"IDLE".equals(state)) {
+            detail = "Finish the current call before dialing";
+            notifyAndBroadcast();
+            return;
+        }
+        long now = System.currentTimeMillis();
+        autoStartAudio = true;
+        pendingOutgoingNumber = number;
+        pendingDialAt = now;
+        caller = number;
+        direction = CallHistoryStore.DIRECTION_OUTGOING;
+        state = "DIALING";
+        detail = "Dialing " + number;
+        activeHistoryId = CallHistoryStore.begin(
+                this, CallHistoryStore.DIRECTION_OUTGOING, number, now);
+        activeHistoryDirection = CallHistoryStore.DIRECTION_OUTGOING;
+        activeHistoryState = "DIALING";
+        notifyAndBroadcast();
+        executor.execute(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    GatewayClient.control(
+                            ClientConfig.host(VoiceMonitorService.this),
+                            ClientConfig.token(VoiceMonitorService.this),
+                            "DIAL " + number);
+                    detail = "Dialing " + number;
+                } catch (Exception error) {
+                    finishFailedDial(error);
+                }
+                notifyAndBroadcast();
+            }
+        });
+    }
+
+    private synchronized void finishFailedDial(Exception error) {
+        autoStartAudio = false;
+        pendingOutgoingNumber = "";
+        pendingDialAt = 0L;
+        state = "IDLE";
+        detail = friendlyError(error);
+        if (activeHistoryId.length() > 0) {
+            CallHistoryStore.finish(
+                    this,
+                    activeHistoryId,
+                    CallHistoryStore.OUTCOME_FAILED,
+                    System.currentTimeMillis());
+            clearHistorySession();
+        }
+        Log.w(TAG, "dial command failed: " + detail);
     }
 
     private void runControl(final String command) {
@@ -216,6 +312,90 @@ public final class VoiceMonitorService extends Service {
                 notifyAndBroadcast();
             }
         });
+    }
+
+    private String resolveDirection(String reportedDirection, String number,
+            String nextState) {
+        if (CallHistoryStore.DIRECTION_INCOMING.equals(reportedDirection)
+                || CallHistoryStore.DIRECTION_OUTGOING.equals(reportedDirection)) {
+            return reportedDirection;
+        }
+        if ("RINGING".equals(nextState)) {
+            return CallHistoryStore.DIRECTION_INCOMING;
+        }
+        if (pendingOutgoingNumber.length() > 0
+                || CallHistoryStore.DIRECTION_OUTGOING.equals(activeHistoryDirection)) {
+            return CallHistoryStore.DIRECTION_OUTGOING;
+        }
+        if ("ACTIVE".equals(nextState) && activeHistoryDirection.length() > 0) {
+            return activeHistoryDirection;
+        }
+        return number.length() == 0 ? "" : CallHistoryStore.DIRECTION_UNKNOWN;
+    }
+
+    private synchronized void updateHistory(String previousState, String currentState,
+            String currentDirection, String currentNumber, long now) {
+        if ("RINGING".equals(currentState)) {
+            beginHistoryIfNeeded(
+                    CallHistoryStore.DIRECTION_INCOMING,
+                    currentNumber,
+                    now,
+                    currentState);
+        } else if ("DIALING".equals(currentState)) {
+            long startedAt = pendingDialAt > 0L ? pendingDialAt : now;
+            beginHistoryIfNeeded(
+                    CallHistoryStore.DIRECTION_OUTGOING,
+                    currentNumber,
+                    startedAt,
+                    currentState);
+        } else if ("ACTIVE".equals(currentState)) {
+            String historyDirection = currentDirection.length() == 0
+                    ? CallHistoryStore.DIRECTION_UNKNOWN : currentDirection;
+            beginHistoryIfNeeded(historyDirection, currentNumber, now, currentState);
+            CallHistoryStore.markConnected(this, activeHistoryId, now);
+            activeHistoryState = "ACTIVE";
+        } else if ("IDLE".equals(currentState)
+                && !"IDLE".equals(previousState)) {
+            finishHistoryForIdle(now);
+        }
+    }
+
+    private void beginHistoryIfNeeded(String historyDirection, String number,
+            long startedAt, String currentState) {
+        if (activeHistoryId.length() == 0) {
+            activeHistoryId = CallHistoryStore.begin(
+                    this, historyDirection, number, startedAt);
+            activeHistoryDirection = historyDirection;
+        }
+        activeHistoryState = currentState;
+    }
+
+    private void finishHistoryForIdle(long now) {
+        if (activeHistoryId.length() > 0) {
+            String outcome;
+            if (CallHistoryStore.DIRECTION_INCOMING.equals(activeHistoryDirection)
+                    && "RINGING".equals(activeHistoryState)) {
+                outcome = hangupRequested
+                        ? CallHistoryStore.OUTCOME_DECLINED
+                        : CallHistoryStore.OUTCOME_MISSED;
+            } else if (CallHistoryStore.DIRECTION_OUTGOING.equals(activeHistoryDirection)
+                    && !"ACTIVE".equals(activeHistoryState)) {
+                outcome = CallHistoryStore.OUTCOME_NOT_CONNECTED;
+            } else {
+                outcome = CallHistoryStore.OUTCOME_COMPLETED;
+            }
+            CallHistoryStore.finish(this, activeHistoryId, outcome, now);
+        }
+        clearHistorySession();
+        pendingOutgoingNumber = "";
+        pendingDialAt = 0L;
+        hangupRequested = false;
+    }
+
+    private void clearHistorySession() {
+        activeHistoryId = "";
+        activeHistoryDirection = "";
+        activeHistoryState = "";
     }
 
     private synchronized void startAudio() {
@@ -313,6 +493,7 @@ public final class VoiceMonitorService extends Service {
         state = newState;
         network = newNetwork;
         caller = newCaller;
+        direction = "";
         detail = newDetail;
         if ("OFFLINE".equals(newState) || "NOT_PAIRED".equals(newState)) {
             callReady = false;
@@ -334,6 +515,7 @@ public final class VoiceMonitorService extends Service {
         status.putExtra(EXTRA_STATE, state);
         status.putExtra(EXTRA_NETWORK, network);
         status.putExtra(EXTRA_CALLER, caller);
+        status.putExtra(EXTRA_DIRECTION, direction);
         status.putExtra(EXTRA_DETAIL, detail);
         status.putExtra(EXTRA_AUDIO, audioState);
         status.putExtra(EXTRA_SPEAKER, speaker);
@@ -351,6 +533,8 @@ public final class VoiceMonitorService extends Service {
         String title;
         if (!callReady && !"OFFLINE".equals(state) && !"NOT_PAIRED".equals(state)) {
             title = "Calls may be busy — LTE-only mode";
+        } else if ("DIALING".equals(state)) {
+            title = "Dialing through modem";
         } else if ("ACTIVE".equals(state)) {
             title = "Modem call active";
         } else if ("RINGING".equals(state)) {

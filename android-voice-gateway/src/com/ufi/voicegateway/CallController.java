@@ -1,5 +1,8 @@
 package com.ufi.voicegateway;
 
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.IBinder;
 
 import java.lang.reflect.InvocationTargetException;
@@ -17,6 +20,13 @@ final class CallController {
     static boolean hangup() throws Exception {
         Object result = invoke("endCall");
         return !(result instanceof Boolean) || ((Boolean) result).booleanValue();
+    }
+
+    static boolean dial(Context context, String number) {
+        Intent intent = new Intent(Intent.ACTION_CALL, Uri.fromParts("tel", number, null));
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        context.startActivity(intent);
+        return true;
     }
 
     private static Object invoke(String methodName) throws Exception {

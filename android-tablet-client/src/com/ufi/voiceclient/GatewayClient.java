@@ -39,15 +39,17 @@ final class GatewayClient {
         final String state;
         final String network;
         final String caller;
+        final String direction;
         final boolean callReady;
         final int preferredNetworkMode;
         final int modeRecoveries;
 
-        Status(String state, String network, String caller, boolean callReady,
+        Status(String state, String network, String caller, String direction, boolean callReady,
                 int preferredNetworkMode, int modeRecoveries) {
             this.state = state;
             this.network = network;
             this.caller = caller;
+            this.direction = direction;
             this.callReady = callReady;
             this.preferredNetworkMode = preferredNetworkMode;
             this.modeRecoveries = modeRecoveries;
@@ -81,6 +83,7 @@ final class GatewayClient {
                 json.optString("state", "UNKNOWN"),
                 json.optString("network", "UNKNOWN"),
                 json.optString("caller", ""),
+                json.optString("direction", ""),
                 json.optBoolean("callReady", true),
                 json.optInt("preferredNetworkMode", 9),
                 json.optInt("modeRecoveries", 0));

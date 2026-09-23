@@ -9,6 +9,7 @@ import android.os.IBinder;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.telephony.PhoneStateListener;
+import android.telephony.PhoneNumberUtils;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 
@@ -30,12 +31,18 @@ public final class VoiceGatewayService extends Service {
     private static final int CONTROL_PORT = 8765;
     private static final int DOWNLINK_PORT = 8766;
     private static final int UPLINK_PORT = 8767;
+    private static final long DIALING_WINDOW_MS = 30000L;
+    private static final String DIRECTION_INCOMING = "INCOMING";
+    private static final String DIRECTION_OUTGOING = "OUTGOING";
+    private static final String DIRECTION_UNKNOWN = "UNKNOWN";
     private static final Charset UTF8 = Charset.forName("UTF-8");
 
     private static volatile boolean running;
     private volatile boolean stopping;
     private volatile int callState = TelephonyManager.CALL_STATE_IDLE;
-    private volatile String incomingNumber = "";
+    private volatile String callNumber = "";
+    private volatile String callDirection = "";
+    private volatile long dialRequestedAt;
     private volatile Socket downlinkClient;
     private volatile Socket uplinkClient;
     private final AtomicBoolean downlinkBusy = new AtomicBoolean(false);
@@ -66,9 +73,17 @@ public final class VoiceGatewayService extends Service {
             public void onCallStateChanged(int state, String number) {
                 callState = state;
                 if (state == TelephonyManager.CALL_STATE_RINGING) {
-                    incomingNumber = number == null ? "" : number;
+                    callNumber = number == null ? "" : number;
+                    callDirection = DIRECTION_INCOMING;
+                    dialRequestedAt = 0L;
+                } else if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
+                    if (callDirection.length() == 0) {
+                        callDirection = DIRECTION_UNKNOWN;
+                    }
                 } else if (state == TelephonyManager.CALL_STATE_IDLE) {
-                    incomingNumber = "";
+                    callNumber = "";
+                    callDirection = "";
+                    dialRequestedAt = 0L;
                     closeAudioClients();
                 }
             }
@@ -189,11 +204,14 @@ public final class VoiceGatewayService extends Service {
             writeLine(output, "ERR AUTH");
             return;
         }
-        String command = readLine(input, 128).trim().toUpperCase(Locale.US);
+        String rawCommand = readLine(input, 128).trim();
+        String command = rawCommand.toUpperCase(Locale.US);
         if ("PING".equals(command)) {
             writeLine(output, "OK PONG");
         } else if ("STATUS".equals(command)) {
             writeLine(output, "OK " + statusJson());
+        } else if (command.startsWith("DIAL")) {
+            handleDial(rawCommand, output);
         } else if ("ANSWER".equals(command)) {
             if (callState != TelephonyManager.CALL_STATE_RINGING) {
                 writeLine(output, "ERR NOT_RINGING");
@@ -204,6 +222,36 @@ public final class VoiceGatewayService extends Service {
             writeLine(output, CallController.hangup() ? "OK" : "ERR HANGUP_FAILED");
         } else {
             writeLine(output, "ERR COMMAND");
+        }
+    }
+
+    private void handleDial(String rawCommand, OutputStream output) throws IOException {
+        if (callState != TelephonyManager.CALL_STATE_IDLE) {
+            writeLine(output, "ERR CALL_IN_PROGRESS");
+            return;
+        }
+        String number = "";
+        if (rawCommand.length() > 4) {
+            number = normalizeDialNumber(rawCommand.substring(4));
+        }
+        if (number.length() == 0) {
+            writeLine(output, "ERR BAD_NUMBER");
+            return;
+        }
+        if (isBlockedDialNumber(number)) {
+            writeLine(output, "ERR NUMBER_BLOCKED");
+            return;
+        }
+        try {
+            callNumber = number;
+            callDirection = DIRECTION_OUTGOING;
+            dialRequestedAt = System.currentTimeMillis();
+            writeLine(output, CallController.dial(this, number) ? "OK" : "ERR DIAL_FAILED");
+        } catch (Exception error) {
+            callNumber = "";
+            callDirection = "";
+            dialRequestedAt = 0L;
+            writeLine(output, "ERR DIAL_FAILED");
         }
     }
 
@@ -325,12 +373,27 @@ public final class VoiceGatewayService extends Service {
 
     private String statusJson() {
         String state;
+        String number = callNumber;
+        String direction = callDirection;
         if (callState == TelephonyManager.CALL_STATE_RINGING) {
             state = "RINGING";
+            direction = DIRECTION_INCOMING;
         } else if (callState == TelephonyManager.CALL_STATE_OFFHOOK) {
             state = "ACTIVE";
         } else {
-            state = "IDLE";
+            long requestedAt = dialRequestedAt;
+            if (DIRECTION_OUTGOING.equals(direction)
+                    && requestedAt > 0L
+                    && System.currentTimeMillis() - requestedAt < DIALING_WINDOW_MS) {
+                state = "DIALING";
+            } else {
+                state = "IDLE";
+                number = "";
+                direction = "";
+                callNumber = "";
+                callDirection = "";
+                dialRequestedAt = 0L;
+            }
         }
         int preferredMode = Settings.Global.getInt(
                 getContentResolver(), "preferred_network_mode", -1);
@@ -342,7 +405,8 @@ public final class VoiceGatewayService extends Service {
                 getContentResolver(), "ufi_voice_network_mode_last_applied", 0L);
         return "{\"state\":\"" + state
                 + "\",\"network\":\"" + networkName(telephony.getNetworkType())
-                + "\",\"caller\":\"" + jsonEscape(incomingNumber)
+                + "\",\"caller\":\"" + jsonEscape(number)
+                + "\",\"direction\":\"" + jsonEscape(direction)
                 + "\",\"downlinkBusy\":" + downlinkBusy.get()
                 + ",\"uplinkBusy\":" + uplinkBusy.get()
                 + ",\"callReady\":" + (preferredMode == 9)
@@ -351,6 +415,37 @@ public final class VoiceGatewayService extends Service {
                 + ",\"lastModeRecoveryAt\":" + lastModeRecovery
                 + ",\"lastModeAppliedAt\":" + lastModeApplied
                 + "}";
+    }
+
+    private static String normalizeDialNumber(String rawNumber) {
+        StringBuilder normalized = new StringBuilder();
+        String value = rawNumber == null ? "" : rawNumber.trim();
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if (character >= '0' && character <= '9') {
+                normalized.append(character);
+            } else if (character == '+' && normalized.length() == 0) {
+                normalized.append(character);
+            } else if (character == ' ' || character == '-' || character == '('
+                    || character == ')' || character == '.') {
+                continue;
+            } else {
+                return "";
+            }
+        }
+        int digitCount = normalized.length();
+        if (digitCount > 0 && normalized.charAt(0) == '+') {
+            digitCount--;
+        }
+        if (digitCount < 6 || digitCount > 20) {
+            return "";
+        }
+        return normalized.toString();
+    }
+
+    @SuppressWarnings("deprecation")
+    private static boolean isBlockedDialNumber(String number) {
+        return PhoneNumberUtils.isEmergencyNumber(number);
     }
 
     private static String networkName(int type) {

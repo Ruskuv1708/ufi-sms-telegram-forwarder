@@ -22,6 +22,8 @@ class TestState:
     def __init__(self, token: str) -> None:
         self.token = token
         self.state = "IDLE"
+        self.number = ""
+        self.direction = ""
         self.lock = threading.Lock()
         self.uplink_complete = threading.Event()
         self.uplink_result: tuple[int, int, int, float] | None = None
@@ -30,9 +32,22 @@ class TestState:
         with self.lock:
             return self.state
 
-    def set(self, value: str) -> None:
+    def snapshot(self) -> tuple[str, str, str]:
+        with self.lock:
+            return self.state, self.number, self.direction
+
+    def set(self, value: str, number: str | None = None,
+            direction: str | None = None) -> None:
         with self.lock:
             self.state = value
+            if value == "IDLE":
+                self.number = ""
+                self.direction = ""
+            else:
+                if number is not None:
+                    self.number = number
+                if direction is not None:
+                    self.direction = direction
 
 
 def read_line(stream: BinaryIO, maximum: int = 8192) -> str:
@@ -78,22 +93,27 @@ class ControlHandler(AuthenticatedHandler):
         if not self.authenticate():
             self.send_line("ERR AUTH")
             return
-        command = read_line(self.rfile, 128).strip().upper()
+        raw_command = read_line(self.rfile, 128).strip()
+        command = raw_command.upper()
         if command != "STATUS":
             print(f"CONTROL {command}", flush=True)
-        state = self.state.get()
+        state, number, direction = self.state.snapshot()
         if command == "PING":
             self.send_line("OK PONG")
         elif command == "STATUS":
             self.send_line("OK " + json.dumps({
                 "state": state,
                 "network": "TEST",
-                "caller": "Integration test" if state == "RINGING" else "",
+                "caller": number,
+                "direction": direction,
                 "downlinkBusy": False,
                 "uplinkBusy": False,
             }, separators=(",", ":")))
         elif command == "ANSWER" and state == "RINGING":
             self.state.set("ACTIVE")
+            self.send_line("OK")
+        elif command.startswith("DIAL ") and state == "IDLE":
+            self.state.set("ACTIVE", raw_command[5:].strip(), "OUTGOING")
             self.send_line("OK")
         elif command == "HANGUP":
             self.state.set("IDLE")
@@ -181,8 +201,9 @@ def main() -> int:
         thread.start()
     print("READY", flush=True)
     time.sleep(args.ring_delay)
-    state.set("RINGING")
-    print("RINGING", flush=True)
+    if state.get() == "IDLE":
+        state.set("RINGING", "Integration test", "INCOMING")
+        print("RINGING", flush=True)
     if args.ring_only > 0:
         time.sleep(args.ring_only)
         final_state = state.get()

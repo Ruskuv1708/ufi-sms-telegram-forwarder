@@ -1,6 +1,6 @@
 # UFI SMS Telegram Forwarder and Call Gateway
 
-SMS forwarding and incoming-call support for Qualcomm-based UFI003 LTE USB
+SMS forwarding and cellular-call support for Qualcomm-based UFI003 LTE USB
 modems. The project runs privileged services on the modem's embedded Android
 4.4 system and provides clients for Linux and Android tablets.
 
@@ -9,8 +9,8 @@ shutdowns and USB reconnects, starts after modem reboot, keeps a persistent
 delivery queue, retries after network failures, and suppresses duplicate SMS
 notifications.
 
-The optional voice gateway rings on a connected Android tablet or Linux
-computer, answers and hangs up incoming cellular calls, and carries two-way
+The optional voice gateway places calls from a connected Android tablet,
+rings on a tablet or Linux computer for incoming calls, and carries two-way
 audio over the modem's private Wi-Fi LAN.
 
 ## Features
@@ -27,6 +27,8 @@ audio over the modem's private Wi-Fi LAN.
   over the modem's Qualcomm USB AT interface.
 - Displays incoming cellular calls on an Android tablet with a full-screen
   alert, caller number, Answer and Hang up controls, and two-way audio.
+- Places ordinary cellular calls from the tablet and keeps the latest 100
+  incoming and outgoing call records locally on that tablet.
 - Provides a small Linux call window and matching command-line controls.
 - Detects and repairs the firmware's LTE-only reset after a cold boot, and
   displays a persistent recovery count in the tablet UI.
@@ -48,7 +50,7 @@ variants. Verify the USB ID and Android/ADB availability before installing.
 android-forwarder/       Headless Android 4.4 SMS-to-Telegram app
 android-network-guard/   Phone-UID radio-mode recovery service
 android-voice-gateway/   System-UID call control and audio LAN gateway
-android-tablet-client/   Android 8+ incoming-call client
+android-tablet-client/   Android 8+ cellular-call client
 tests/                   Local voice-client integration fixture
 ufi_sms.py               Linux USB/AT SMS receiver and fallback forwarder
 ufi_voice.py             Linux voice setup, CLI, and desktop window
@@ -142,7 +144,7 @@ systemctl --user enable --now ufi-sms.service
 Do not run the Linux watcher and the Android forwarder at the same time unless
 you intentionally want duplicate delivery paths.
 
-## Incoming-call gateway
+## Cellular-call gateway
 
 ### Important network limitation
 
@@ -207,18 +209,25 @@ repairs it.
 
 The tablet client keeps a visible foreground notification so Android does not
 suspend call monitoring. Use headphones when practical to reduce acoustic
-echo. Only one audio client can use a call at a time.
+echo. Only one audio client can use a call at a time. To place a call, enter an
+ordinary 6-to-20-digit phone number in the tablet app and tap **Call**. The
+tablet stores the latest 100 call records in its private app data; tap a
+history row to copy that number back into the dial field.
 
 ### Current voice scope
 
-- Incoming calls, caller display, answer, hang up, ringtone, and two-way audio
+- Incoming and outgoing calls, caller display, answer, hang up, ringtone, and
+  two-way audio
+- Local tablet call history with direction, result, time, and approximate
+  connected duration
 - Automatic LTE-to-HSPA call fallback and return to LTE data
 - Android tablet and Linux desktop clients on the local modem LAN
 - One active audio client at a time
 
-Outgoing dialing, emergency calling, supplementary services, and true IMS
-VoLTE are not implemented. Calls remain ordinary carrier calls and may incur
-normal operator charges.
+Emergency numbers, short/service codes, supplementary services, and true IMS
+VoLTE are not supported. The gateway deliberately rejects emergency and
+service-code dialing. Calls remain ordinary carrier calls and may incur normal
+operator charges.
 
 ## Security and privacy
 
