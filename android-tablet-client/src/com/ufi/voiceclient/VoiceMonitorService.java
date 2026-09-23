@@ -36,12 +36,17 @@ public final class VoiceMonitorService extends Service {
     static final String EXTRA_DETAIL = "detail";
     static final String EXTRA_AUDIO = "audio";
     static final String EXTRA_SPEAKER = "speaker";
+    static final String EXTRA_CALL_READY = "call_ready";
+    static final String EXTRA_PREFERRED_MODE = "preferred_mode";
+    static final String EXTRA_MODE_RECOVERIES = "mode_recoveries";
 
     private static final String TAG = "UfiCallClient";
     private static final String CHANNEL_MONITOR = "ufi_voice_monitor";
     private static final String CHANNEL_CALLS = "ufi_voice_calls";
+    private static final String CHANNEL_GUARD = "ufi_voice_guard";
     private static final int NOTIFICATION_MONITOR = 4101;
     private static final int NOTIFICATION_CALL = 4102;
+    private static final int NOTIFICATION_GUARD = 4103;
 
     private ScheduledExecutorService executor;
     private NotificationManager notifications;
@@ -57,6 +62,9 @@ public final class VoiceMonitorService extends Service {
     private volatile String caller = "";
     private volatile String detail = "Connecting to the modem";
     private volatile String audioState = "OFF";
+    private volatile boolean callReady = true;
+    private volatile int preferredNetworkMode = -1;
+    private volatile int modeRecoveries = -1;
 
     @Override
     public void onCreate() {
@@ -144,7 +152,20 @@ public final class VoiceMonitorService extends Service {
             state = status.state;
             network = status.network;
             caller = status.caller;
-            detail = "Connected to modem";
+            boolean previousCallReady = callReady;
+            int previousRecoveries = modeRecoveries;
+            callReady = status.callReady;
+            preferredNetworkMode = status.preferredNetworkMode;
+            modeRecoveries = status.modeRecoveries;
+            detail = callReady
+                    ? "Connected to modem"
+                    : "LTE-only mode detected; guard is correcting it";
+            if (!callReady && previousCallReady) {
+                showModeWarning(false);
+            } else if (callReady && previousRecoveries >= 0
+                    && modeRecoveries > previousRecoveries) {
+                showModeWarning(true);
+            }
             if ("RINGING".equals(state)) {
                 if (!"RINGING".equals(previous)) {
                     showIncomingCall();
@@ -293,6 +314,10 @@ public final class VoiceMonitorService extends Service {
         network = newNetwork;
         caller = newCaller;
         detail = newDetail;
+        if ("OFFLINE".equals(newState) || "NOT_PAIRED".equals(newState)) {
+            callReady = false;
+            preferredNetworkMode = -1;
+        }
         notifyAndBroadcast();
     }
 
@@ -312,6 +337,9 @@ public final class VoiceMonitorService extends Service {
         status.putExtra(EXTRA_DETAIL, detail);
         status.putExtra(EXTRA_AUDIO, audioState);
         status.putExtra(EXTRA_SPEAKER, speaker);
+        status.putExtra(EXTRA_CALL_READY, callReady);
+        status.putExtra(EXTRA_PREFERRED_MODE, preferredNetworkMode);
+        status.putExtra(EXTRA_MODE_RECOVERIES, Math.max(0, modeRecoveries));
         sendBroadcast(status);
     }
 
@@ -321,7 +349,9 @@ public final class VoiceMonitorService extends Service {
                 this, 1, openIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         String title;
-        if ("ACTIVE".equals(state)) {
+        if (!callReady && !"OFFLINE".equals(state) && !"NOT_PAIRED".equals(state)) {
+            title = "Calls may be busy — LTE-only mode";
+        } else if ("ACTIVE".equals(state)) {
             title = "Modem call active";
         } else if ("RINGING".equals(state)) {
             title = "Incoming modem call";
@@ -382,6 +412,30 @@ public final class VoiceMonitorService extends Service {
         notifications.notify(NOTIFICATION_CALL, call);
     }
 
+    private void showModeWarning(boolean recovered) {
+        Intent openIntent = new Intent(this, MainActivity.class);
+        PendingIntent open = PendingIntent.getActivity(
+                this, 5, openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        String title = recovered
+                ? "Modem call mode recovered"
+                : "Modem switched to LTE-only mode";
+        String message = recovered
+                ? "Automatic LTE/3G mode was restored. Recovery count: " + modeRecoveries
+                : "Incoming calls may be busy while the guard corrects it.";
+        Notification warning = new Notification.Builder(this, CHANNEL_GUARD)
+                .setSmallIcon(R.drawable.ic_phone)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setContentIntent(open)
+                .setCategory(Notification.CATEGORY_ERROR)
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setVisibility(Notification.VISIBILITY_PRIVATE)
+                .build();
+        notifications.notify(NOTIFICATION_GUARD, warning);
+    }
+
     private void createNotificationChannels() {
         NotificationChannel monitor = new NotificationChannel(
                 CHANNEL_MONITOR, "Modem call connection", NotificationManager.IMPORTANCE_LOW);
@@ -398,6 +452,13 @@ public final class VoiceMonitorService extends Service {
                 .build();
         calls.setSound(Settings.System.DEFAULT_RINGTONE_URI, attributes);
         notifications.createNotificationChannel(calls);
+
+        NotificationChannel guard = new NotificationChannel(
+                CHANNEL_GUARD, "Modem call readiness", NotificationManager.IMPORTANCE_DEFAULT);
+        guard.setDescription("Warns if the modem returns to LTE-only mode");
+        guard.setSound(null, null);
+        guard.enableVibration(true);
+        notifications.createNotificationChannel(guard);
     }
 
     @SuppressWarnings("deprecation")

@@ -30,6 +30,7 @@ public class MainActivity extends Activity {
     private TextView callerView;
     private TextView detailView;
     private TextView networkView;
+    private TextView readinessView;
     private Button answerButton;
     private Button hangupButton;
     private Button audioButton;
@@ -175,6 +176,13 @@ public class MainActivity extends Activity {
         networkView.setPadding(0, dp(14), 0, 0);
         card.addView(networkView);
 
+        readinessView = new TextView(this);
+        readinessView.setText("Call readiness: checking…");
+        readinessView.setTextSize(14);
+        readinessView.setTextColor(Color.rgb(89, 99, 115));
+        readinessView.setPadding(0, dp(6), 0, 0);
+        card.addView(readinessView);
+
         detailView = new TextView(this);
         detailView.setText("Starting the secure modem connection");
         detailView.setTextSize(14);
@@ -281,6 +289,12 @@ public class MainActivity extends Activity {
         String caller = safe(intent.getStringExtra(VoiceMonitorService.EXTRA_CALLER));
         String detail = safe(intent.getStringExtra(VoiceMonitorService.EXTRA_DETAIL));
         boolean speaker = intent.getBooleanExtra(VoiceMonitorService.EXTRA_SPEAKER, true);
+        boolean callReady = intent.getBooleanExtra(
+                VoiceMonitorService.EXTRA_CALL_READY, false);
+        int preferredMode = intent.getIntExtra(
+                VoiceMonitorService.EXTRA_PREFERRED_MODE, -1);
+        int recoveries = intent.getIntExtra(
+                VoiceMonitorService.EXTRA_MODE_RECOVERIES, 0);
 
         String displayState;
         if ("RINGING".equals(lastState)) {
@@ -304,6 +318,20 @@ public class MainActivity extends Activity {
             callerView.setVisibility(View.GONE);
         }
         networkView.setText("Network: " + (network.length() == 0 ? "—" : network));
+        if (preferredMode < 0) {
+            readinessView.setText("Call readiness: unavailable");
+            readinessView.setTextColor(Color.rgb(89, 99, 115));
+        } else if (callReady) {
+            String recovered = recoveries == 0
+                    ? ""
+                    : " · LTE-only recovered " + recoveries
+                            + (recoveries == 1 ? " time" : " times");
+            readinessView.setText("Call readiness: Ready (LTE/3G automatic)" + recovered);
+            readinessView.setTextColor(Color.rgb(25, 135, 84));
+        } else {
+            readinessView.setText("Call readiness: LTE-only — calls may be busy");
+            readinessView.setTextColor(Color.rgb(198, 40, 40));
+        }
         String audioDetail = "CONNECTED".equals(lastAudio) ? " · audio connected" : "";
         detailView.setText(detail + audioDetail);
         answerButton.setEnabled("RINGING".equals(lastState));

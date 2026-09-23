@@ -39,11 +39,18 @@ final class GatewayClient {
         final String state;
         final String network;
         final String caller;
+        final boolean callReady;
+        final int preferredNetworkMode;
+        final int modeRecoveries;
 
-        Status(String state, String network, String caller) {
+        Status(String state, String network, String caller, boolean callReady,
+                int preferredNetworkMode, int modeRecoveries) {
             this.state = state;
             this.network = network;
             this.caller = caller;
+            this.callReady = callReady;
+            this.preferredNetworkMode = preferredNetworkMode;
+            this.modeRecoveries = modeRecoveries;
         }
     }
 
@@ -73,7 +80,10 @@ final class GatewayClient {
         return new Status(
                 json.optString("state", "UNKNOWN"),
                 json.optString("network", "UNKNOWN"),
-                json.optString("caller", ""));
+                json.optString("caller", ""),
+                json.optBoolean("callReady", true),
+                json.optInt("preferredNetworkMode", 9),
+                json.optInt("modeRecoveries", 0));
     }
 
     static Session open(String host, String token, int port) throws Exception {

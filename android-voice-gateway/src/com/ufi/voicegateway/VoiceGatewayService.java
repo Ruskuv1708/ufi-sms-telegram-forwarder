@@ -332,11 +332,24 @@ public final class VoiceGatewayService extends Service {
         } else {
             state = "IDLE";
         }
+        int preferredMode = Settings.Global.getInt(
+                getContentResolver(), "preferred_network_mode", -1);
+        int modeRecoveries = Settings.Global.getInt(
+                getContentResolver(), "ufi_voice_network_mode_recoveries", 0);
+        long lastModeRecovery = Settings.Global.getLong(
+                getContentResolver(), "ufi_voice_network_mode_last_recovery", 0L);
+        long lastModeApplied = Settings.Global.getLong(
+                getContentResolver(), "ufi_voice_network_mode_last_applied", 0L);
         return "{\"state\":\"" + state
                 + "\",\"network\":\"" + networkName(telephony.getNetworkType())
                 + "\",\"caller\":\"" + jsonEscape(incomingNumber)
                 + "\",\"downlinkBusy\":" + downlinkBusy.get()
                 + ",\"uplinkBusy\":" + uplinkBusy.get()
+                + ",\"callReady\":" + (preferredMode == 9)
+                + ",\"preferredNetworkMode\":" + preferredMode
+                + ",\"modeRecoveries\":" + modeRecoveries
+                + ",\"lastModeRecoveryAt\":" + lastModeRecovery
+                + ",\"lastModeAppliedAt\":" + lastModeApplied
                 + "}";
     }
 
@@ -364,31 +377,16 @@ public final class VoiceGatewayService extends Service {
     }
 
     private void startNetworkModeGuard() {
-        Thread guard = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                while (!stopping) {
-                    try {
-                        int mode = Settings.Global.getInt(
-                                getContentResolver(), "preferred_network_mode", -1);
-                        if (mode != 9) {
-                            Settings.Global.putInt(
-                                    getContentResolver(), "preferred_network_mode", 9);
-                        }
-                        Intent apply = new Intent("com.ufi.networkguard.APPLY");
-                        apply.setClassName(
-                                "com.ufi.networkguard",
-                                "com.ufi.networkguard.NetworkGuardService");
-                        startService(apply);
-                    } catch (Exception error) {
-                        Log.w(TAG, "network guard unavailable");
-                    }
-                    sleepQuietly(20000);
-                }
-            }
-        }, "UfiVoiceNetworkGuard");
-        guard.setDaemon(true);
-        guard.start();
+        try {
+            Intent apply = new Intent("com.ufi.networkguard.APPLY");
+            apply.setClassName(
+                    "com.ufi.networkguard",
+                    "com.ufi.networkguard.NetworkGuardService");
+            startService(apply);
+        } catch (Exception error) {
+            Log.w(TAG, "network guard unavailable: "
+                    + error.getClass().getSimpleName());
+        }
     }
 
     private PowerManager.WakeLock acquireWakeLock(String suffix) {

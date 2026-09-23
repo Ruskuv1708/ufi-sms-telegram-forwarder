@@ -136,6 +136,25 @@ def setup_gateway(serial: str, install: bool) -> None:
                 raise VoiceError(f"Missing built APK: {apk}")
             run_adb(serial, "install", "-r", str(apk))
 
+        # The guard shares the long-lived com.android.phone process. Android
+        # 4.4 can keep its old service instance alive across an APK update, so
+        # explicitly recreate it before applying the new build.
+        subprocess.run(
+            [
+                "adb",
+                "-s",
+                serial,
+                "shell",
+                "am",
+                "stopservice",
+                "-n",
+                "com.ufi.networkguard/.NetworkGuardService",
+            ],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
     run_adb(
         serial,
         "shell",
@@ -486,8 +505,19 @@ class VoiceWindow:
         state = str(status.get("state", "UNKNOWN"))
         caller = str(status.get("caller", ""))
         network = str(status.get("network", "UNKNOWN"))
+        call_ready = bool(status.get("callReady", True))
+        preferred_mode = int(status.get("preferredNetworkMode", 9))
+        recoveries = int(status.get("modeRecoveries", 0))
         self.state_label.config(text=state.title())
-        detail = f"Network: {network}"
+        if call_ready:
+            readiness = "Calls: ready (LTE/3G automatic)"
+            if recoveries:
+                readiness += f" · LTE-only recovered {recoveries} time"
+                if recoveries != 1:
+                    readiness += "s"
+        else:
+            readiness = f"WARNING: LTE-only mode {preferred_mode}; calls may be busy"
+        detail = f"Network: {network}   {readiness}"
         if caller:
             detail += f"   Caller: {caller}"
         self.detail_label.config(text=detail)

@@ -2,8 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.ufi.networkguard"
     android:sharedUserId="android.uid.phone"
-    android:versionCode="1"
-    android:versionName="0.1.0">
+    android:versionCode="3"
+    android:versionName="0.3.0">
 
     <uses-sdk android:minSdkVersion="19" android:targetSdkVersion="19" />
     <uses-permission android:name="android.permission.MODIFY_PHONE_STATE" />
@@ -21,8 +21,7 @@
             android:process="com.android.phone" />
         <receiver
             android:name=".BootReceiver"
-            android:exported="true"
-            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />

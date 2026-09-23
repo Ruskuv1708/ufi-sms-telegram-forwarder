@@ -6,8 +6,6 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStreamReader;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 
 final class FifoPlayer {
     private static final int SAMPLE_RATE = 48000;
@@ -78,12 +76,19 @@ final class FifoPlayer {
     }
 
     private static void makeFifo(String path) throws Exception {
-        Class<?> libcoreClass = Class.forName("libcore.io.Libcore");
-        Field osField = libcoreClass.getField("os");
-        Object os = osField.get(null);
-        Class<?> osInterface = Class.forName("libcore.io.Os");
-        Method mkfifo = osInterface.getMethod("mkfifo", String.class, int.class);
-        mkfifo.invoke(os, path, 0600);
+        java.lang.Process process = new ProcessBuilder(
+                "/system/bin/busybox", "mkfifo", "-m", "600", path)
+                .redirectErrorStream(true)
+                .start();
+        BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream(), "UTF-8"));
+        while (reader.readLine() != null) {
+            // Drain diagnostics so the child process cannot block.
+        }
+        int result = process.waitFor();
+        if (result != 0) {
+            throw new IllegalStateException("mkfifo exited with " + result);
+        }
     }
 
     private static void setMixer(boolean enabled) throws Exception {
