@@ -53,7 +53,7 @@ jobs:
           UFI_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           UFI_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew --no-daemon bundleRelease
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ufi-phone-android-aab
           path: android-tablet-client/build/outputs/bundle/release/*.aab
@@ -83,7 +83,7 @@ jobs:
         run: python -c "import tkinter; import desktop.ufi_phone_desktop"
       - name: Build desktop executable
         run: python -m PyInstaller --clean --noconfirm desktop/UFI-Phone.spec
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: dist/UFI-Phone*
@@ -96,7 +96,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: release-artifacts
           merge-multiple: true
