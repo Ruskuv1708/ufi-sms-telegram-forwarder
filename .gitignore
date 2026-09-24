@@ -43,3 +43,11 @@ dist/
 desktop/build/
 desktop/dist/
 *.spec.bak
+
+# Unified workspace: keep final presentation sources in Git, local history and
+# generated build/release artifacts on this machine.
+presentations/archive/
+presentations/workbench/
+project-archive/
+release-artifacts/**
+!release-artifacts/README.md

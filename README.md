@@ -82,12 +82,36 @@ android-tablet-client/   Android 8+ UFI Phone app for calls and SMS
 desktop/                 Linux/Windows UFI Phone desktop application
 distribution/            Google Play listing, privacy, and review materials
 docs/                    Compatibility research and Apple platform roadmap
+presentations/           Final TUIT decks, sources, assets, and validation
+release-artifacts/       Locally downloaded CI packages (ignored by Git)
 tests/                   Local voice-client integration fixture
 ufi_setup.py              Read-only doctor and guarded one-command installer
 ufi_sms.py               Linux USB/AT SMS receiver and fallback forwarder
 ufi_voice.py             Linux voice setup, CLI, and desktop window
 ufi-sms.service          Optional systemd user service for SMS fallback
 ```
+
+## Unified project workspace
+
+This directory is the canonical workspace for the whole UFI Phone project.
+The application, modem services, desktop clients, research, store-delivery
+materials, presentation source, and final presentation files now share this
+single Git repository.
+
+- [`presentations/final`](presentations/final/) contains the current English
+  and Russian TUIT decks.
+- [`presentations/source`](presentations/source/) contains the reproducible
+  deck generator.
+- [`presentations/validation`](presentations/validation/) contains the final
+  validation receipts and rendered slide review images.
+- [`release-artifacts`](release-artifacts/) is the local home for packages
+  downloaded from the verified GitHub Actions build.
+
+Generated presentation work files, superseded drafts, release binaries, and
+the pre-consolidation workspace metadata are retained locally but ignored by
+Git. Private runtime data such as pairing tokens and stored SMS remains in the
+user configuration directories and is deliberately not copied into this
+public repository.
 
 ## Direct calls and SMS on the tablet
 
