@@ -5,8 +5,9 @@ project_dir="$(cd "$(dirname "$0")" && pwd)"
 toolchain_dir="${UFI_ANDROID_TOOLCHAIN:-$HOME/.cache/ufi-sms-android/toolchain}"
 java_home="${JAVA_HOME:-$toolchain_dir/jdk}"
 sdk_root="${ANDROID_SDK_ROOT:-$toolchain_dir/sdk}"
-build_tools="$sdk_root/build-tools/${UFI_BUILD_TOOLS_VERSION:-35.0.0}"
-platform_jar="$sdk_root/platforms/android-${UFI_TABLET_PLATFORM_VERSION:-35}/android.jar"
+build_tools="$sdk_root/build-tools/${UFI_BUILD_TOOLS_VERSION:-36.0.0}"
+tablet_platform_version="${UFI_TABLET_PLATFORM_VERSION:-36}"
+platform_jar="$sdk_root/platforms/android-$tablet_platform_version/android.jar"
 
 export JAVA_HOME="$java_home"
 export PATH="$java_home/bin:$PATH"
@@ -20,7 +21,9 @@ for required in "$java_home/bin/javac" "$java_home/bin/keytool" "$platform_jar" 
     fi
 done
 
-build_dir="$project_dir/build"
+# Keep the fast standalone APK separate from Gradle's build/ tree so an AAB
+# build and a sideload APK can coexist.
+build_dir="$project_dir/standalone-build"
 generated_dir="$build_dir/generated"
 classes_dir="$build_dir/classes"
 dex_dir="$build_dir/dex"
@@ -33,6 +36,10 @@ rm -f "$unsigned_apk" "$aligned_apk" "$final_apk"
 mkdir -p "$generated_dir" "$classes_dir" "$dex_dir"
 
 "$build_tools/aapt" package -f -m \
+    --min-sdk-version 26 \
+    --target-sdk-version "$tablet_platform_version" \
+    --version-code 5 \
+    --version-name 0.5.0 \
     -M "$project_dir/AndroidManifest.xml" \
     -S "$project_dir/res" \
     -I "$platform_jar" \
@@ -56,6 +63,10 @@ mapfile -t class_files < <(find "$classes_dir" -name '*.class' -type f | sort)
     "${class_files[@]}"
 
 "$build_tools/aapt" package -f \
+    --min-sdk-version 26 \
+    --target-sdk-version "$tablet_platform_version" \
+    --version-code 5 \
+    --version-name 0.5.0 \
     -M "$project_dir/AndroidManifest.xml" \
     -S "$project_dir/res" \
     -I "$platform_jar" \

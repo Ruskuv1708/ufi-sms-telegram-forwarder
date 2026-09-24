@@ -48,6 +48,16 @@ A separate crop was not needed because the combined 1736 × 1340 image preserves
 1. Earlier evidence: `/tmp/ufi-phone-calls.png` showed the app's bottom navigation labels too close to Android's system navigation area, a P2 persistent-control spacing issue.
 2. Fix applied: bottom navigation height was increased from 90 dp to 112 dp and bottom padding from 8 dp to 26 dp. Keypad focus was also prevented from opening an unnecessary software keyboard, and call timestamps were made more compact.
 3. Post-fix evidence: `/tmp/ufi-phone-final.png`, `/tmp/ufi-phone-keypad-final.png`, and `/tmp/ufi-phone-messages-final.png` show fully visible navigation icons and labels with clear separation from the system bar. No actionable P0, P1, or P2 issue remains.
+4. A later landscape audit found the portrait keypad geometry did not fit the
+   shorter 1340 × 800 viewport: its final row and call action were obscured by
+   bottom navigation. Version 0.5.0 replaces that layout with a two-column
+   landscape treatment. `/tmp/ufi-phone-v050-audit/keypad-landscape-final.png` shows
+   all twelve keys, the call action, safety copy, and navigation at once.
+5. Version 0.5.0 also constrains Calls content on wide screens, replaces
+   number-derived avatar text with phone/message icons, shortens the compose
+   action, hides the routine healthy-sync caption, and uses carrier-neutral
+   connection wording. The new landscape result has no actionable P0, P1, or
+   P2 issue.
 
 ## Open Questions
 
@@ -60,6 +70,8 @@ A separate crop was not needed because the combined 1736 × 1340 image preserves
 - [x] Keep modem readiness visible without interrupting the primary task.
 - [x] Prevent app navigation from colliding with Android system controls.
 - [x] Verify native vector icons and readable English copy on the physical tablet.
+- [x] Keep every keypad action visible in portrait and landscape.
+- [x] Use carrier-neutral UI copy for deployment beyond Ucell.
 
 ## Follow-up Polish
 

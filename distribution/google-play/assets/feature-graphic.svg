@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="500" viewBox="0 0 1024 500">
+  <rect width="1024" height="500" fill="#F7F9FE"/>
+  <circle cx="900" cy="80" r="190" fill="#E7F0FF"/>
+  <circle cx="930" cy="460" r="230" fill="#E5F6EC"/>
+  <g transform="translate(72 74) scale(.69)">
+    <rect width="512" height="512" rx="116" fill="#0B67D1"/>
+    <circle cx="256" cy="256" r="166" fill="#FFFFFF" fill-opacity=".12"/>
+    <path fill="#FFFFFF" transform="translate(112 112) scale(12)"
+      d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02z"/>
+  </g>
+  <text x="500" y="178" fill="#101B35" font-family="Inter, Roboto, sans-serif" font-size="62" font-weight="700">UFI Phone</text>
+  <text x="504" y="238" fill="#0B67D1" font-family="Inter, Roboto, sans-serif" font-size="27" font-weight="600">Calls and SMS from your UFI modem</text>
+  <text x="504" y="286" fill="#627087" font-family="Inter, Roboto, sans-serif" font-size="24">Direct. Private. Familiar.</text>
+  <g transform="translate(504 330)">
+    <rect width="276" height="54" rx="27" fill="#E5F6EC"/>
+    <circle cx="29" cy="27" r="8" fill="#159455"/>
+    <text x="50" y="35" fill="#315F49" font-family="Inter, Roboto, sans-serif" font-size="21" font-weight="600">Private local connection</text>
+  </g>
+</svg>

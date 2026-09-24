@@ -1,0 +1,108 @@
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+      - name: Compile Python sources
+        run: python -m py_compile ufi_setup.py ufi_voice.py desktop/model.py desktop/ufi_phone_desktop.py
+
+  android-companion:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Android API 36
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Configure optional Play upload signing
+        id: signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            base64 --decode <<< "$ANDROID_KEYSTORE_BASE64" > "$RUNNER_TEMP/ufi-phone-upload.jks"
+            echo "path=$RUNNER_TEMP/ufi-phone-upload.jks" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build Android App Bundle
+        working-directory: android-tablet-client
+        env:
+          UFI_ANDROID_KEYSTORE: ${{ steps.signing.outputs.path }}
+          UFI_ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          UFI_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          UFI_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon bundleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ufi-phone-android-aab
+          path: android-tablet-client/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: ufi-phone-linux-x86_64
+          - os: windows-latest
+            artifact: ufi-phone-windows-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install packager
+        run: python -m pip install --disable-pip-version-check pyinstaller
+      - name: Install Windows audio backend
+        if: runner.os == 'Windows'
+        run: python -m pip install --disable-pip-version-check -r desktop/requirements-windows.txt
+      - name: Verify desktop runtime
+        run: python -c "import tkinter; import desktop.ufi_phone_desktop"
+      - name: Build desktop executable
+        run: python -m PyInstaller --clean --noconfirm desktop/UFI-Phone.spec
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/UFI-Phone*
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, android-companion, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+      - name: Publish GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes
+          find release-artifacts -type f -print0 | xargs -0 gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber

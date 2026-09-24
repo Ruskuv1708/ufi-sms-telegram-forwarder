@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=UFI Phone
+Comment=Calls and SMS through a compatible UFI modem
+Exec=UFI-Phone
+Icon=ufi-phone
+Terminal=false
+Categories=Network;Telephony;Utility;
+Keywords=modem;phone;sms;call;
+StartupNotify=true

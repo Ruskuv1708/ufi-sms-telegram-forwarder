@@ -2,7 +2,7 @@
 
 Direct SMS and cellular-call support for Qualcomm-based UFI003 LTE USB modems.
 The project runs privileged services on the modem's embedded Android 4.4
-system and provides clients for Android tablets and Linux.
+system and provides clients for Android, Linux, and Windows.
 
 The recommended interface is the **UFI Phone** tablet app. It reads and sends
 SMS directly through the modem's private LAN, places and receives ordinary
@@ -30,8 +30,36 @@ independent compatibility path.
 - Optionally forwards SMS through the Telegram Bot API with a persistent retry
   queue when the legacy forwarder is enabled.
 - Provides a small Linux call window and matching command-line controls.
+- Provides a full Linux/Windows desktop client with calls, keypad, local call
+  history, conversations, SMS sending, and optional duplex audio.
 - Detects and repairs the firmware's LTE-only reset after a cold boot, and
   displays a persistent recovery count in the tablet UI.
+
+## Quick start
+
+Start with the read-only device doctor. It reports only a small whitelist of
+non-secret hardware properties and never prints pairing tokens, SMS, IMSI, or
+call contents:
+
+```bash
+./ufi_setup.py doctor
+```
+
+For the exact tested hardware profile, one command can build the three Android
+components, safely install the privileged modem services, pair the tablet, and
+leave Telegram disabled:
+
+```bash
+./ufi_setup.py install \
+  --modem-serial MODEM_ADB_SERIAL \
+  --tablet-serial TABLET_ADB_SERIAL
+```
+
+The installer refuses unverified look-alike hardware. Cheap “UFI” devices can
+use the same enclosure while containing unrelated chipsets, Android builds,
+or signing certificates. See
+[hardware profiles](hardware-profiles.json) and the
+[profile guide](docs/adding-hardware-profiles.md) before porting a new model.
 
 ## Tested hardware
 
@@ -51,7 +79,11 @@ android-forwarder/       Optional headless Android 4.4 Telegram forwarder
 android-network-guard/   Phone-UID radio-mode recovery service
 android-voice-gateway/   System-UID call, SMS, and audio LAN gateway
 android-tablet-client/   Android 8+ UFI Phone app for calls and SMS
+desktop/                 Linux/Windows UFI Phone desktop application
+distribution/            Google Play listing, privacy, and review materials
+docs/                    Compatibility research and Apple platform roadmap
 tests/                   Local voice-client integration fixture
+ufi_setup.py              Read-only doctor and guarded one-command installer
 ufi_sms.py               Linux USB/AT SMS receiver and fallback forwarder
 ufi_voice.py             Linux voice setup, CLI, and desktop window
 ufi-sms.service          Optional systemd user service for SMS fallback
@@ -63,8 +95,8 @@ ufi-sms.service          Optional systemd user service for SMS fallback
 
 - The exact tested UFI003 hardware and firmware listed above
 - ADB access to the modem and tablet for installation
-- JDK 17 and Android SDK platform/build-tools 35.0.0
-- Android SDK platform 19 for the modem and platform 35 for the tablet
+- JDK 17, Android SDK platform 19 for the modem, and platform 36 for the tablet
+- Android Build Tools 35.0.0 for modem builds and 36.0.0 for the companion
 - Platform signing keys matching the modem's firmware certificate
 - An Android 8+ tablet connected to the modem's `192.168.100.0/24` LAN
 
@@ -97,6 +129,27 @@ Open **UFI Phone** on the tablet:
 SMS and call commands are accepted only from the modem's private
 `192.168.100.0/24` LAN and require the pairing token. Normal carrier charges
 can apply to outgoing calls and SMS.
+
+### Google Play build
+
+The tablet companion has a standard Gradle 9.6 / Android Gradle Plugin 9.4.1
+build that targets API 36 and produces an Android App Bundle:
+
+```bash
+cd android-tablet-client
+./gradlew bundleRelease
+```
+
+Set `UFI_ANDROID_KEYSTORE`, `UFI_ANDROID_STORE_PASSWORD`,
+`UFI_ANDROID_KEY_ALIAS`, and `UFI_ANDROID_KEY_PASSWORD` to create a signed
+upload bundle. Without them, Gradle intentionally creates an unsigned review
+artifact. The GitHub workflow builds the AAB and Linux/Windows desktop
+executables; tagged versions publish release assets. Store copy, privacy and
+review declarations are in [`distribution/google-play`](distribution/google-play/).
+
+Only the ordinary Android companion belongs in Google Play. The modem gateway
+and network guard require device-specific platform signing and remain behind
+the guarded ADB installer.
 
 ## Optional Telegram forwarding
 
@@ -155,7 +208,7 @@ avoid sending private SMS contents to a cloud service. `disable` cancels the
 retry alarm and stops forwarding across reboots without deleting the bot
 token, chat ID, or queue; `enable` resumes the preserved configuration.
 
-## Linux fallback
+## Linux USB/AT fallback
 
 The standalone Python tool talks directly to USB interface 2 using PyUSB. It
 uses [uv](https://docs.astral.sh/uv/) to install the pinned `pyusb` dependency
@@ -222,6 +275,18 @@ does not exactly match a device you own.
 ./ufi_voice.py hangup
 ```
 
+`./ufi_voice.py ui` now opens the full UFI Phone desktop client. It includes
+Calls, Keypad, Messages, and local call history. The same application is
+packaged as a portable Windows executable:
+
+```bash
+python3 desktop/ufi_phone_desktop.py
+```
+
+Linux call audio uses PipeWire/PulseAudio `parec` and `paplay`. Windows release
+builds include a PortAudio backend through `sounddevice`. See
+[`desktop/README.md`](desktop/README.md) for local packaging commands.
+
 The status output includes `callReady`, `preferredNetworkMode`, and
 `modeRecoveries`. Mode `9` means automatic LTE/3G fallback is ready. Mode `11`
 means LTE-only and incoming calls may be reported as busy until the guard
@@ -239,13 +304,30 @@ acoustic echo. Only one audio client can use a call at a time.
 - Local tablet call history with direction, result, time, and approximate
   connected duration
 - Automatic LTE-to-HSPA call fallback and return to LTE data
-- Android tablet and Linux desktop clients on the local modem LAN
+- Android, Linux, and Windows clients on the local modem LAN
 - One active audio client at a time
 
 Emergency numbers, short/service codes, supplementary services, and true IMS
 VoLTE are not supported. The gateway deliberately rejects emergency and
 service-code dialing. Calls remain ordinary carrier calls and may incur normal
 operator charges.
+
+## Carrier and platform roadmap
+
+The overall positioning, design principles, support tiers, and milestones are
+captured in the [product vision](docs/product-vision.md).
+
+Ucell is the tested reference operator. Mobiuz, Uzmobile, Humans, and Beeline
+require the documented SIM acceptance test before they can be advertised as
+supported; Perfectum's CDMA and 5G SA/VoNR device paths are incompatible with
+this exact UFI003. See the
+[Uzbekistan market and operator report](docs/uzbekistan-market-and-operator-compatibility.md).
+
+The recommended Apple sequence is a macOS companion followed by an iPadOS app
+sharing one Swift protocol package. Background incoming calls on iPadOS need a
+separate, App-Review-compliant push architecture; a local socket cannot simply
+stay alive indefinitely. See the
+[iPadOS and macOS roadmap](docs/apple-platform-roadmap.md).
 
 ## Security and privacy
 

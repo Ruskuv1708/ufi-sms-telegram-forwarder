@@ -199,7 +199,12 @@ def setup_tablet(serial: str, install: bool) -> None:
     config = load_config()
     package = "com.ufi.voiceclient"
     if install:
-        apk = PROJECT_DIR / "android-tablet-client" / "build" / "ufi-call-client.apk"
+        apk = (
+            PROJECT_DIR
+            / "android-tablet-client"
+            / "standalone-build"
+            / "ufi-call-client.apk"
+        )
         if not apk.exists():
             raise VoiceError(f"Missing built APK: {apk}")
         run_adb(serial, "install", "-r", str(apk))
@@ -610,7 +615,9 @@ def main() -> int:
     elif args.command == "hangup":
         control_request(config, "HANGUP")
     elif args.command == "ui":
-        VoiceWindow(config).run()
+        from desktop.ufi_phone_desktop import UfiPhoneApp
+
+        UfiPhoneApp(config).run()
     return 0
 
 

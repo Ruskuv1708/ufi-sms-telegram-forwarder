@@ -9,8 +9,12 @@ __pycache__/
 android-forwarder/build/
 android-network-guard/build/
 android-tablet-client/build/
+android-tablet-client/standalone-build/
 android-voice-gateway/build/
+.gradle/
+local.properties
 *.apk
+*.aab
 *.idsig
 *.jks
 *.keystore
@@ -32,3 +36,10 @@ aved
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Desktop packaging output
+/build/
+dist/
+desktop/build/
+desktop/dist/
+*.spec.bak

@@ -1,0 +1,56 @@
+plugins {
+    id "com.android.application" version "9.4.1"
+}
+
+def releaseKeystore = System.getenv("UFI_ANDROID_KEYSTORE")
+def releaseStorePassword = System.getenv("UFI_ANDROID_STORE_PASSWORD")
+def releaseKeyAlias = System.getenv("UFI_ANDROID_KEY_ALIAS")
+def releaseKeyPassword = System.getenv("UFI_ANDROID_KEY_PASSWORD")
+def hasReleaseSigning = releaseKeystore && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
+
+android {
+    namespace = "com.ufi.voiceclient"
+    compileSdk = 36
+    buildToolsVersion = "36.0.0"
+
+    defaultConfig {
+        applicationId = "com.ufi.voiceclient"
+        minSdk = 26
+        targetSdk = 36
+        versionCode = 5
+        versionName = "0.5.0"
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile "AndroidManifest.gradle.xml"
+            java.srcDirs = ["src"]
+            res.srcDirs = ["res"]
+        }
+    }
+
+    if (hasReleaseSigning) {
+        signingConfigs {
+            release {
+                storeFile = file(releaseKeystore)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+}

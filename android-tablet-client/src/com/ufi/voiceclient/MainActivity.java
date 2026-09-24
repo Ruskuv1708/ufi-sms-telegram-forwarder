@@ -10,6 +10,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
@@ -229,18 +230,20 @@ public class MainActivity extends Activity {
     }
 
     private View buildInterface() {
+        boolean landscape = isLandscape();
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(COLOR_BACKGROUND);
 
         root.addView(buildTopBar(), new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(82)));
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(landscape ? 68 : 82)));
 
         callBanner = buildCallBanner();
         LinearLayout.LayoutParams bannerParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
-        bannerParams.setMargins(dp(28), 0, dp(28), dp(12));
+        bannerParams.setMargins(dp(landscape ? 20 : 28), 0,
+                dp(landscape ? 20 : 28), dp(landscape ? 6 : 12));
         root.addView(callBanner, bannerParams);
 
         contentHost = new FrameLayout(this);
@@ -254,7 +257,7 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
 
         root.addView(buildBottomNavigation(), new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(112)));
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(landscape ? 82 : 112)));
         selectTab(TAB_CALLS);
         return root;
     }
@@ -265,7 +268,7 @@ public class MainActivity extends Activity {
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setPadding(dp(28), dp(10), dp(20), dp(6));
 
-        TextView title = text("Phone", 31, COLOR_TEXT, true);
+        TextView title = text("Phone", isLandscape() ? 27 : 31, COLOR_TEXT, true);
         bar.addView(title);
         bar.addView(new Space(this), new LinearLayout.LayoutParams(0, 1, 1f));
 
@@ -370,9 +373,11 @@ public class MainActivity extends Activity {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(28), dp(18), dp(28), dp(104));
-        scroll.addView(content, new ScrollView.LayoutParams(
-                ScrollView.LayoutParams.MATCH_PARENT,
-                ScrollView.LayoutParams.WRAP_CONTENT));
+        ScrollView.LayoutParams contentParams = new ScrollView.LayoutParams(
+                isLandscape() ? contentWidth(760) : ScrollView.LayoutParams.MATCH_PARENT,
+                ScrollView.LayoutParams.WRAP_CONTENT);
+        contentParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        scroll.addView(content, contentParams);
 
         LinearLayout heading = new LinearLayout(this);
         heading.setGravity(Gravity.CENTER_VERTICAL);
@@ -412,25 +417,30 @@ public class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(40), dp(18), dp(40), dp(24));
+        boolean landscape = isLandscape();
+        root.setOrientation(landscape ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        root.setGravity(landscape ? Gravity.CENTER : Gravity.CENTER_HORIZONTAL);
+        root.setPadding(dp(landscape ? 28 : 40), dp(landscape ? 6 : 18),
+                dp(landscape ? 28 : 40), dp(landscape ? 8 : 24));
         scroll.addView(root, new ScrollView.LayoutParams(
                 ScrollView.LayoutParams.MATCH_PARENT,
                 ScrollView.LayoutParams.WRAP_CONTENT));
 
+        LinearLayout introduction = new LinearLayout(this);
+        introduction.setOrientation(LinearLayout.VERTICAL);
+        introduction.setGravity(landscape ? Gravity.CENTER_VERTICAL : Gravity.CENTER_HORIZONTAL);
         TextView title = text("Keypad", 27, COLOR_TEXT, true);
         title.setGravity(Gravity.START);
-        root.addView(title, new LinearLayout.LayoutParams(
+        introduction.addView(title, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
         LinearLayout numberRow = new LinearLayout(this);
         numberRow.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams numberRowParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(76));
-        numberRowParams.setMargins(0, dp(18), 0, dp(12));
-        root.addView(numberRow, numberRowParams);
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(landscape ? 68 : 76));
+        numberRowParams.setMargins(0, dp(landscape ? 10 : 18), 0, dp(landscape ? 8 : 12));
+        introduction.addView(numberRow, numberRowParams);
         keypadNumber = new EditText(this);
         keypadNumber.setSingleLine(true);
         keypadNumber.setGravity(Gravity.CENTER);
@@ -449,6 +459,9 @@ public class MainActivity extends Activity {
             @Override
             public void onClick(View view) {
                 int end = keypadNumber.getSelectionEnd();
+                if (end < 0) {
+                    end = keypadNumber.length();
+                }
                 if (end > 0) {
                     keypadNumber.getText().delete(end - 1, end);
                 }
@@ -462,6 +475,27 @@ public class MainActivity extends Activity {
             }
         });
         numberRow.addView(backspace, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+        TextView note = text(
+                "Emergency numbers and service codes are intentionally blocked",
+                12, COLOR_MUTED, false);
+        note.setGravity(landscape ? Gravity.START : Gravity.CENTER);
+        introduction.addView(note);
+
+        if (landscape) {
+            LinearLayout.LayoutParams introParams = new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.MATCH_PARENT, 1f);
+            introParams.setMargins(0, 0, dp(28), 0);
+            root.addView(introduction, introParams);
+        } else {
+            root.addView(introduction, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
+        }
+
+        LinearLayout keypad = new LinearLayout(this);
+        keypad.setOrientation(LinearLayout.VERTICAL);
+        keypad.setGravity(Gravity.CENTER_HORIZONTAL);
 
         String[][] keys = {
                 {"1", "2\nABC", "3\nDEF"},
@@ -493,12 +527,14 @@ public class MainActivity extends Activity {
                         }
                     });
                 }
+                int keySize = landscape ? 62 : 82;
                 LinearLayout.LayoutParams keyParams = new LinearLayout.LayoutParams(
-                        dp(82), dp(82));
-                keyParams.setMargins(dp(12), dp(5), dp(12), dp(5));
+                        dp(keySize), dp(keySize));
+                keyParams.setMargins(dp(landscape ? 7 : 12), dp(landscape ? 2 : 5),
+                        dp(landscape ? 7 : 12), dp(landscape ? 2 : 5));
                 row.addView(button, keyParams);
             }
-            root.addView(row);
+            keypad.addView(row);
         }
 
         keypadCallButton = iconButton(R.drawable.ic_phone, Color.WHITE, COLOR_BLUE, 76);
@@ -510,22 +546,27 @@ public class MainActivity extends Activity {
                 dialNumber(keypadNumber.getText().toString());
             }
         });
-        LinearLayout.LayoutParams callParams = new LinearLayout.LayoutParams(dp(76), dp(76));
-        callParams.setMargins(0, dp(16), 0, dp(8));
-        root.addView(keypadCallButton, callParams);
-
-        TextView note = text(
-                "Emergency numbers and service codes are intentionally blocked",
-                12, COLOR_MUTED, false);
-        note.setGravity(Gravity.CENTER);
-        root.addView(note);
+        int callSize = landscape ? 62 : 76;
+        LinearLayout.LayoutParams callParams = new LinearLayout.LayoutParams(
+                dp(callSize), dp(callSize));
+        callParams.setMargins(0, dp(landscape ? 5 : 16), 0, dp(landscape ? 2 : 8));
+        keypad.addView(keypadCallButton, callParams);
+        if (landscape) {
+            root.addView(keypad, new LinearLayout.LayoutParams(
+                    dp(250), LinearLayout.LayoutParams.WRAP_CONTENT));
+        } else {
+            root.addView(keypad, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
+        }
         return scroll;
     }
 
     private View buildBottomNavigation() {
         LinearLayout navigation = new LinearLayout(this);
         navigation.setOrientation(LinearLayout.HORIZONTAL);
-        navigation.setPadding(dp(20), dp(8), dp(20), dp(26));
+        navigation.setPadding(dp(20), dp(isLandscape() ? 4 : 8), dp(20),
+                dp(isLandscape() ? 8 : 26));
         navigation.setBackgroundColor(COLOR_SURFACE);
         navigation.setElevation(dp(8));
         addNavItem(navigation, TAB_CALLS, R.drawable.ic_phone, "Calls");
@@ -571,7 +612,8 @@ public class MainActivity extends Activity {
         navItems[tab] = item;
         navIcons[tab] = image;
         navLabels[tab] = text;
-        navigation.addView(item, new LinearLayout.LayoutParams(0, dp(70), 1f));
+        navigation.addView(item, new LinearLayout.LayoutParams(
+                0, dp(isLandscape() ? 66 : 70), 1f));
     }
 
     private void selectTab(int tab) {
@@ -590,7 +632,8 @@ public class MainActivity extends Activity {
         if (tab == TAB_CALLS) {
             refreshCalls();
         } else if (tab == TAB_KEYPAD) {
-            keypadNumber.requestFocus();
+            hideKeyboard();
+            keypadNumber.clearFocus();
         } else {
             hideKeyboard();
             renderMessages();
@@ -631,10 +674,8 @@ public class MainActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(0, dp(12), 0, dp(12));
-        TextView avatar = text(avatarLabel(entry.number), 17, COLOR_BLUE, true);
-        avatar.setGravity(Gravity.CENTER);
-        avatar.setBackground(rounded(avatarColor(entry.number), 48));
-        row.addView(avatar, new LinearLayout.LayoutParams(dp(50), dp(50)));
+        row.addView(avatarIcon(entry.number, R.drawable.ic_phone),
+                new LinearLayout.LayoutParams(dp(50), dp(50)));
 
         LinearLayout middle = new LinearLayout(this);
         middle.setOrientation(LinearLayout.VERTICAL);
@@ -699,6 +740,7 @@ public class MainActivity extends Activity {
     }
 
     private View buildConversationList() {
+        FrameLayout screen = new FrameLayout(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(28), dp(18), dp(28), 0);
@@ -707,7 +749,7 @@ public class MainActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(text("Messages", 27, COLOR_TEXT, true));
         header.addView(new Space(this), new LinearLayout.LayoutParams(0, 1, 1f));
-        Button compose = outlineButton("New message");
+        Button compose = outlineButton("New");
         compose.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -716,12 +758,14 @@ public class MainActivity extends Activity {
                 renderMessages();
             }
         });
-        header.addView(compose, new LinearLayout.LayoutParams(dp(150), dp(46)));
+        header.addView(compose, new LinearLayout.LayoutParams(dp(92), dp(44)));
         root.addView(header);
 
-        TextView sync = text(lastSmsDetail, 13, COLOR_MUTED, false);
-        sync.setPadding(0, dp(4), 0, dp(10));
-        root.addView(sync);
+        if (!"Messages synced directly with modem".equals(lastSmsDetail)) {
+            TextView sync = text(lastSmsDetail, 13, COLOR_MUTED, false);
+            sync.setPadding(0, dp(4), 0, dp(10));
+            root.addView(sync);
+        }
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout list = new LinearLayout(this);
@@ -743,7 +787,12 @@ public class MainActivity extends Activity {
                 ScrollView.LayoutParams.WRAP_CONTENT));
         root.addView(scroll, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
-        return root;
+        FrameLayout.LayoutParams rootParams = new FrameLayout.LayoutParams(
+                isLandscape() ? contentWidth(900) : FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT);
+        rootParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        screen.addView(root, rootParams);
+        return screen;
     }
 
     private View buildConversationRow(final Conversation conversation) {
@@ -751,10 +800,8 @@ public class MainActivity extends Activity {
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(0, dp(13), 0, dp(13));
 
-        TextView avatar = text(avatarLabel(conversation.address), 17, COLOR_BLUE, true);
-        avatar.setGravity(Gravity.CENTER);
-        avatar.setBackground(rounded(avatarColor(conversation.address), 48));
-        row.addView(avatar, new LinearLayout.LayoutParams(dp(50), dp(50)));
+        row.addView(avatarIcon(conversation.address, R.drawable.ic_message),
+                new LinearLayout.LayoutParams(dp(50), dp(50)));
 
         LinearLayout middle = new LinearLayout(this);
         middle.setOrientation(LinearLayout.VERTICAL);
@@ -995,7 +1042,7 @@ public class MainActivity extends Activity {
         } else {
             dot = COLOR_GREEN;
             background = COLOR_GREEN_SOFT;
-            value = "Ucell · " + (lastNetwork.length() == 0 ? "Connected" : lastNetwork)
+            value = "Modem · " + (lastNetwork.length() == 0 ? "Connected" : lastNetwork)
                     + " · Ready";
             if (lastModeRecoveries > 0) {
                 value += " · recovered " + lastModeRecoveries + "×";
@@ -1120,7 +1167,8 @@ public class MainActivity extends Activity {
                 ? "No LTE-only resets detected"
                 : "LTE-only mode recovered " + lastModeRecoveries
                         + (lastModeRecoveries == 1 ? " time" : " times");
-        String message = "Ucell · " + (lastNetwork.length() == 0 ? "Unknown network" : lastNetwork)
+        String message = "Mobile network · "
+                + (lastNetwork.length() == 0 ? "Unknown" : lastNetwork)
                 + "\n" + readiness
                 + "\n" + recoveries
                 + "\n\nSMS is read and sent directly through the modem's local network."
@@ -1163,7 +1211,10 @@ public class MainActivity extends Activity {
     }
 
     private void appendDialCharacter(String value) {
-        int start = Math.max(0, keypadNumber.getSelectionStart());
+        int start = keypadNumber.getSelectionStart();
+        if (start < 0 || start > keypadNumber.length()) {
+            start = keypadNumber.length();
+        }
         keypadNumber.getText().insert(start, value);
     }
 
@@ -1259,6 +1310,19 @@ public class MainActivity extends Activity {
         return button;
     }
 
+    private View avatarIcon(String value, int drawable) {
+        FrameLayout avatar = new FrameLayout(this);
+        avatar.setBackground(rounded(avatarColor(value), 48));
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(drawable);
+        icon.setColorFilter(COLOR_BLUE);
+        icon.setPadding(dp(13), dp(13), dp(13), dp(13));
+        avatar.addView(icon, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+        return avatar;
+    }
+
     private TextView text(String value, int size, int color, boolean bold) {
         TextView view = new TextView(this);
         view.setText(value);
@@ -1329,20 +1393,6 @@ public class MainActivity extends Activity {
         return address == null || address.length() == 0 ? "Unknown sender" : address;
     }
 
-    private static String avatarLabel(String value) {
-        if (value == null || value.length() == 0) {
-            return "?";
-        }
-        String clean = value.replaceAll("[^A-Za-z0-9]", "");
-        if (clean.length() == 0) {
-            return "?";
-        }
-        if (clean.length() == 1) {
-            return clean.toUpperCase(Locale.US);
-        }
-        return clean.substring(Math.max(0, clean.length() - 2)).toUpperCase(Locale.US);
-    }
-
     private static int avatarColor(String value) {
         int hash = value == null ? 0 : value.hashCode() & 0x7fffffff;
         int[] colors = {0xffd9e9ff, 0xffe5ddff, 0xffd9f2e4, 0xffffe0e6, 0xffffebc8};
@@ -1380,6 +1430,16 @@ public class MainActivity extends Activity {
 
     private int dp(float value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private boolean isLandscape() {
+        return getResources().getConfiguration().orientation
+                == Configuration.ORIENTATION_LANDSCAPE;
+    }
+
+    private int contentWidth(int maximumDp) {
+        int available = getResources().getDisplayMetrics().widthPixels - dp(56);
+        return Math.max(dp(280), Math.min(available, dp(maximumDp)));
     }
 
     private static String safe(String value) {

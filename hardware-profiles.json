@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "profiles": [
+    {
+      "id": "ufi003-msm8916-android-4.4",
+      "name": "UFI003 / Qualcomm MSM8916 / Android 4.4",
+      "support": "tested",
+      "match": {
+        "productDevice": "msm8916_32_512",
+        "sdk": 19,
+        "basebandPrefix": "UFI003_CT",
+        "usbIds": [
+          "05c6:90b4"
+        ],
+        "lanHost": "192.168.100.1"
+      },
+      "capabilities": {
+        "mobileData": true,
+        "smsRead": true,
+        "smsSend": true,
+        "incomingCalls": true,
+        "outgoingCalls": true,
+        "twoWayCallAudio": true,
+        "volteIms": false,
+        "voiceTransport": "2G/3G circuit-switched fallback"
+      },
+      "installation": {
+        "requiresAdb": true,
+        "requiresPlatformSigning": true,
+        "expectedPlatformCertificateSha256": "C8:A2:E9:BC:CF:59:7C:2F:B6:DC:66:BE:E2:93:FC:13:F2:FC:47:EC:77:BC:6B:2B:0D:52:C1:1F:51:19:2A:B8",
+        "modemMinSdk": 19,
+        "tabletMinSdk": 26
+      },
+      "notes": "Exact hardware and firmware family used for development. Carrier voice requires 2G/3G fallback because the firmware has no usable IMS stack."
+    }
+  ]
+}
