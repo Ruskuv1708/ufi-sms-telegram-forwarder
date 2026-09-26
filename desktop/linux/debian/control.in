@@ -1,0 +1,14 @@
+Package: ufi-phone
+Version: @VERSION@
+Section: net
+Priority: optional
+Architecture: @ARCHITECTURE@
+Installed-Size: @INSTALLED_SIZE@
+Maintainer: Kuvatov Ruslan Baxtiyarovich <ufi-sms-telegram-forwarder@users.noreply.github.com>
+Homepage: https://github.com/Ruskuv1708/ufi-sms-telegram-forwarder
+Depends: libc6 (>= @MIN_GLIBC@), zlib1g
+Recommends: pulseaudio-utils
+Description: Desktop calls and SMS through a compatible UFI modem
+ UFI Phone connects to the authenticated private-LAN gateway on a compatible
+ Qualcomm-based UFI003 LTE modem. It supports cellular calls, two-way call
+ audio, SMS conversations, a keypad, and local call history.

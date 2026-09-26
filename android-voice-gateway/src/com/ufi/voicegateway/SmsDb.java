@@ -34,6 +34,7 @@ final class SmsDb extends SQLiteOpenHelper {
     }
 
     private static final Charset UTF8 = Charset.forName("UTF-8");
+    private static final int MAX_STORED_MESSAGES = 5000;
 
     SmsDb(Context context) {
         super(context, "ufi_messages.db", null, 2);
@@ -154,8 +155,16 @@ final class SmsDb extends SQLiteOpenHelper {
         values.put("date", Long.valueOf(safeDate));
         values.put("type", Integer.valueOf(type));
         values.put("read", Integer.valueOf(read ? 1 : 0));
-        return getWritableDatabase().insertWithOnConflict(
+        SQLiteDatabase database = getWritableDatabase();
+        long result = database.insertWithOnConflict(
                 "messages", null, values, SQLiteDatabase.CONFLICT_IGNORE);
+        if (result != -1L) {
+            database.execSQL(
+                    "DELETE FROM messages WHERE _id NOT IN ("
+                            + "SELECT _id FROM messages ORDER BY date DESC, _id DESC LIMIT "
+                            + MAX_STORED_MESSAGES + ")");
+        }
+        return result;
     }
 
     private static String digest(String value) {

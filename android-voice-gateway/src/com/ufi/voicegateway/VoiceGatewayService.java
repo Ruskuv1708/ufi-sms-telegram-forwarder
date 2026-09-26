@@ -22,8 +22,13 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.Charset;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 public final class VoiceGatewayService extends Service {
     private static final String TAG = "UfiVoiceGateway";
@@ -31,11 +36,15 @@ public final class VoiceGatewayService extends Service {
     private static final int CONTROL_PORT = 8765;
     private static final int DOWNLINK_PORT = 8766;
     private static final int UPLINK_PORT = 8767;
+    private static final int MAX_CLIENTS = 12;
+    private static final int AUTH_NONCE_BYTES = 32;
+    private static final String AUTH_DOMAIN = "UFI-AUTH-2";
     private static final long DIALING_WINDOW_MS = 30000L;
     private static final String DIRECTION_INCOMING = "INCOMING";
     private static final String DIRECTION_OUTGOING = "OUTGOING";
     private static final String DIRECTION_UNKNOWN = "UNKNOWN";
     private static final Charset UTF8 = Charset.forName("UTF-8");
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private static volatile boolean running;
     private volatile boolean stopping;
@@ -47,6 +56,7 @@ public final class VoiceGatewayService extends Service {
     private volatile Socket uplinkClient;
     private final AtomicBoolean downlinkBusy = new AtomicBoolean(false);
     private final AtomicBoolean uplinkBusy = new AtomicBoolean(false);
+    private final AtomicInteger activeClients = new AtomicInteger(0);
     private TelephonyManager telephony;
     private PhoneStateListener phoneListener;
     private ServerSocket controlServer;
@@ -67,6 +77,12 @@ public final class VoiceGatewayService extends Service {
         running = true;
         stopping = false;
         telephony = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+        if (telephony == null) {
+            Log.e(TAG, "telephony service is unavailable; gateway will not start");
+            running = false;
+            stopSelf();
+            return;
+        }
         callState = telephony.getCallState();
         phoneListener = new PhoneStateListener() {
             @Override
@@ -154,6 +170,16 @@ public final class VoiceGatewayService extends Service {
                                 closeSocket(socket);
                                 continue;
                             }
+                            if (activeClients.incrementAndGet() > MAX_CLIENTS) {
+                                activeClients.decrementAndGet();
+                                try {
+                                    writeLine(socket.getOutputStream(), "ERR BUSY");
+                                } catch (IOException ignored) {
+                                    // The client may already have disconnected.
+                                }
+                                closeSocket(socket);
+                                continue;
+                            }
                             Thread client = new Thread(new Runnable() {
                                 @Override
                                 public void run() {
@@ -164,6 +190,7 @@ public final class VoiceGatewayService extends Service {
                                                 + error.getClass().getSimpleName());
                                     } finally {
                                         closeSocket(socket);
+                                        activeClients.decrementAndGet();
                                     }
                                 }
                             }, "UfiVoice" + name + "Client");
@@ -200,11 +227,16 @@ public final class VoiceGatewayService extends Service {
         socket.setSoTimeout(5000);
         InputStream input = socket.getInputStream();
         OutputStream output = socket.getOutputStream();
-        if (!authenticate(input)) {
+        Authentication authentication = beginAuthentication(input, output, CONTROL_PORT);
+        if (authentication == null) {
             writeLine(output, "ERR AUTH");
             return;
         }
         String rawCommand = readLine(input, 16384).trim();
+        if (!authentication.matches(rawCommand)) {
+            writeLine(output, "ERR AUTH");
+            return;
+        }
         String command = rawCommand.toUpperCase(Locale.US);
         if ("PING".equals(command)) {
             writeLine(output, "OK PONG");
@@ -322,7 +354,9 @@ public final class VoiceGatewayService extends Service {
             socket.setSoTimeout(5000);
             InputStream input = socket.getInputStream();
             OutputStream output = socket.getOutputStream();
-            if (!authenticate(input)) {
+            Authentication authentication = beginAuthentication(
+                    input, output, DOWNLINK_PORT);
+            if (authentication == null || !authentication.matches("DOWNLINK")) {
                 writeLine(output, "ERR AUTH");
                 return;
             }
@@ -383,7 +417,9 @@ public final class VoiceGatewayService extends Service {
             socket.setSoTimeout(5000);
             InputStream input = socket.getInputStream();
             OutputStream output = socket.getOutputStream();
-            if (!authenticate(input)) {
+            Authentication authentication = beginAuthentication(
+                    input, output, UPLINK_PORT);
+            if (authentication == null || !authentication.matches("UPLINK")) {
                 writeLine(output, "ERR AUTH");
                 return;
             }
@@ -416,14 +452,62 @@ public final class VoiceGatewayService extends Service {
         }
     }
 
-    private boolean authenticate(InputStream input) throws Exception {
-        String line = readLine(input, 160);
-        if (!line.startsWith("TOKEN ")) {
-            return false;
+    private Authentication beginAuthentication(InputStream input, OutputStream output, int port)
+            throws Exception {
+        byte[] nonceBytes = new byte[AUTH_NONCE_BYTES];
+        SECURE_RANDOM.nextBytes(nonceBytes);
+        String nonce = toHex(nonceBytes);
+        writeLine(output, "HELLO 2 " + nonce);
+        String line = readLine(input, 160).trim();
+        if (!line.startsWith("AUTH ")) {
+            return null;
         }
-        byte[] supplied = line.substring(6).trim().getBytes(UTF8);
-        byte[] expected = GatewayConfig.token(this).getBytes(UTF8);
-        return MessageDigest.isEqual(supplied, expected);
+        return new Authentication(
+                GatewayConfig.token(this),
+                port,
+                nonce,
+                line.substring(5).trim().toLowerCase(Locale.US));
+    }
+
+    private static String authProof(String token, int port, String nonce, String binding)
+            throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(token.getBytes(UTF8), "HmacSHA256"));
+        return toHex(mac.doFinal(
+                (AUTH_DOMAIN + "\n" + port + "\n" + nonce + "\n" + binding)
+                        .getBytes(UTF8)));
+    }
+
+    private static final class Authentication {
+        private final String token;
+        private final int port;
+        private final String nonce;
+        private final String supplied;
+
+        Authentication(String token, int port, String nonce, String supplied) {
+            this.token = token;
+            this.port = port;
+            this.nonce = nonce;
+            this.supplied = supplied;
+        }
+
+        boolean matches(String binding) throws Exception {
+            byte[] received = supplied.getBytes(UTF8);
+            byte[] expected = authProof(token, port, nonce, binding).getBytes(UTF8);
+            return MessageDigest.isEqual(received, expected);
+        }
+    }
+
+    private static String toHex(byte[] value) {
+        StringBuilder result = new StringBuilder(value.length * 2);
+        for (byte item : value) {
+            int unsigned = item & 0xff;
+            if (unsigned < 16) {
+                result.append('0');
+            }
+            result.append(Integer.toHexString(unsigned));
+        }
+        return result.toString();
     }
 
     private String statusJson() {
@@ -458,12 +542,13 @@ public final class VoiceGatewayService extends Service {
                 getContentResolver(), "ufi_voice_network_mode_last_recovery", 0L);
         long lastModeApplied = Settings.Global.getLong(
                 getContentResolver(), "ufi_voice_network_mode_last_applied", 0L);
-        return "{\"state\":\"" + state
+        return "{\"protocolVersion\":2,\"state\":\"" + state
                 + "\",\"network\":\"" + networkName(telephony.getNetworkType())
                 + "\",\"caller\":\"" + jsonEscape(number)
                 + "\",\"direction\":\"" + jsonEscape(direction)
                 + "\",\"downlinkBusy\":" + downlinkBusy.get()
                 + ",\"uplinkBusy\":" + uplinkBusy.get()
+                + ",\"activeClients\":" + activeClients.get()
                 + ",\"callReady\":" + (preferredMode == 9)
                 + ",\"preferredNetworkMode\":" + preferredMode
                 + ",\"modeRecoveries\":" + modeRecoveries

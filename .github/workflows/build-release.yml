@@ -14,34 +14,68 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-test.txt
       - name: Run unit tests
         run: python -m unittest discover -s tests -p "test_*.py" -v
+      - name: Run high-signal Python static checks
+        run: python -m ruff check --select E9,F63,F7,F82 ufi_setup.py ufi_sms.py ufi_voice.py desktop tests tools android-forwarder/control.py
+      - name: Enforce project safety invariants
+        run: python tools/project_guard.py
       - name: Compile Python sources
-        run: python -m py_compile ufi_setup.py ufi_voice.py desktop/model.py desktop/ufi_phone_desktop.py
+        run: python -m py_compile ufi_setup.py ufi_sms.py ufi_voice.py desktop/model.py desktop/ufi_phone_desktop.py android-forwarder/control.py
+      - name: Validate shell scripts
+        shell: bash
+        run: find . -type f -name '*.sh' -not -path './project-archive/*' -print0 | xargs -0 -n1 bash -n
 
   android-companion:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
         with:
           distribution: temurin
           java-version: "17"
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
       - name: Set up Android SDK 36
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
         with:
-          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+          packages: "platform-tools platforms;android-19 platforms;android-36 build-tools;36.0.0"
+      - name: Compile privileged modem sources
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/modem-classes"
+          for component in android-network-guard android-voice-gateway; do
+            rm -rf "$RUNNER_TEMP/modem-classes/$component"
+            mkdir -p "$RUNNER_TEMP/modem-classes/$component"
+            mapfile -t sources < <(find "$component/src" -name '*.java' -type f | sort)
+            javac -encoding UTF-8 -source 7 -target 7 \
+              -bootclasspath "$ANDROID_HOME/platforms/android-19/android.jar" \
+              -d "$RUNNER_TEMP/modem-classes/$component" "${sources[@]}"
+          done
       - name: Configure optional Play upload signing
         id: signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" && -z "$ANDROID_KEYSTORE_BASE64" ]]; then
+            echo "Tagged releases require Android upload signing secrets." >&2
+            exit 1
+          fi
           if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            for value in ANDROID_STORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+              if [ -z "${!value}" ]; then
+                echo "Android signing configuration is incomplete: $value is missing." >&2
+                exit 1
+              fi
+            done
             base64 --decode <<< "$ANDROID_KEYSTORE_BASE64" > "$RUNNER_TEMP/ufi-phone-upload.jks"
             echo "path=$RUNNER_TEMP/ufi-phone-upload.jks" >> "$GITHUB_OUTPUT"
           fi
@@ -53,7 +87,10 @@ jobs:
           UFI_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           UFI_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew --no-daemon bundleRelease
-      - uses: actions/upload-artifact@v7
+      - name: Verify signed release bundle
+        if: steps.signing.outputs.path != ''
+        run: jarsigner -verify -strict android-tablet-client/build/outputs/bundle/release/*.aab
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ufi-phone-android-aab
           path: android-tablet-client/build/outputs/bundle/release/*.aab
@@ -64,18 +101,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             artifact: ufi-phone-linux-x86_64
-          - os: windows-latest
+          - os: windows-2022
             artifact: ufi-phone-windows-x86_64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Install packager
-        run: python -m pip install --disable-pip-version-check pyinstaller
+        run: python -m pip install --disable-pip-version-check -r desktop/requirements-build.txt
       - name: Install Windows audio backend
         if: runner.os == 'Windows'
         run: python -m pip install --disable-pip-version-check -r desktop/requirements-windows.txt
@@ -83,10 +120,21 @@ jobs:
         run: python -c "import tkinter; import desktop.ufi_phone_desktop"
       - name: Build desktop executable
         run: python -m PyInstaller --clean --noconfirm desktop/UFI-Phone.spec
-      - uses: actions/upload-artifact@v7
+      - name: Verify packaged desktop runtime
+        run: >-
+          python -c "import os, pathlib, subprocess;
+          executable = pathlib.Path('dist/UFI-Phone.exe' if os.name == 'nt' else 'dist/UFI-Phone');
+          environment = dict(os.environ, UFI_PHONE_PACKAGE_SELF_TEST='1');
+          subprocess.run([str(executable)], env=environment, check=True)"
+      - name: Build Linux install packages
+        if: runner.os == 'Linux'
+        run: desktop/linux/build-packages.sh --binary dist/UFI-Phone --output dist --min-glibc 2.35
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ matrix.artifact }}
-          path: dist/UFI-Phone*
+          path: |
+            dist/UFI-Phone*
+            dist/ufi-phone_*.deb
           if-no-files-found: error
 
   publish:
@@ -96,14 +144,22 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Verify release tag and repository invariants
+        run: python tools/project_guard.py --tag "$GITHUB_REF_NAME"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: release-artifacts
           merge-multiple: true
+      - name: Generate release checksums
+        shell: bash
+        run: |
+          cd release-artifacts
+          find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
       - name: Publish GitHub release assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
             gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes
-          find release-artifacts -type f -print0 | xargs -0 gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber
+          find release-artifacts -type f -print0 | xargs -0 gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"

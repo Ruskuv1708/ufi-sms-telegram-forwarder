@@ -8,6 +8,7 @@ import base64
 import hmac
 import json
 import math
+import secrets
 from pathlib import Path
 import socketserver
 import struct
@@ -17,6 +18,7 @@ from typing import BinaryIO
 
 
 CONFIG_PATH = Path.home() / ".config" / "ufi-voice-gateway" / "client.json"
+AUTH_DOMAIN = "UFI-AUTH-2"
 
 
 class TestState:
@@ -102,10 +104,25 @@ class AuthenticatedHandler(socketserver.StreamRequestHandler):
     def state(self) -> TestState:
         return self.server.test_state  # type: ignore[attr-defined, no-any-return]
 
-    def authenticate(self) -> bool:
-        line = read_line(self.rfile, 160)
-        supplied = line[6:].strip() if line.startswith("TOKEN ") else ""
-        return hmac.compare_digest(supplied, self.state.token)
+    def begin_authentication(self) -> tuple[str, str]:
+        nonce = secrets.token_hex(32)
+        self.send_line("HELLO 2 " + nonce)
+        line = read_line(self.rfile, 160).strip()
+        supplied = line[5:].strip() if line.startswith("AUTH ") else ""
+        return nonce, supplied
+
+    def authentication_matches(self, attempt: tuple[str, str], binding: str) -> bool:
+        nonce, supplied = attempt
+        port = int(self.server.server_address[1])  # type: ignore[attr-defined]
+        expected = hmac.digest(
+            self.state.token.encode("ascii"),
+            f"{AUTH_DOMAIN}\n{port}\n{nonce}\n{binding}".encode("ascii"),
+            "sha256",
+        ).hex()
+        return hmac.compare_digest(supplied, expected)
+
+    def authenticate(self, binding: str) -> bool:
+        return self.authentication_matches(self.begin_authentication(), binding)
 
     def send_line(self, line: str) -> None:
         self.wfile.write((line + "\n").encode())
@@ -114,10 +131,11 @@ class AuthenticatedHandler(socketserver.StreamRequestHandler):
 
 class ControlHandler(AuthenticatedHandler):
     def handle(self) -> None:
-        if not self.authenticate():
+        attempt = self.begin_authentication()
+        raw_command = read_line(self.rfile, 16384).strip()
+        if not self.authentication_matches(attempt, raw_command):
             self.send_line("ERR AUTH")
             return
-        raw_command = read_line(self.rfile, 16384).strip()
         command = raw_command.upper()
         if (command not in {"STATUS", "SMS_LIST"}
                 and not command.startswith("SMS_SEND ")
@@ -129,6 +147,7 @@ class ControlHandler(AuthenticatedHandler):
         elif command == "STATUS":
             self.send_line("OK " + json.dumps({
                 "state": state,
+                "protocolVersion": 2,
                 "network": "TEST",
                 "caller": number,
                 "direction": direction,
@@ -170,7 +189,7 @@ class ControlHandler(AuthenticatedHandler):
 
 class DownlinkHandler(AuthenticatedHandler):
     def handle(self) -> None:
-        if not self.authenticate():
+        if not self.authenticate("DOWNLINK"):
             self.send_line("ERR AUTH")
             return
         if self.state.get() != "ACTIVE":
@@ -192,7 +211,7 @@ class DownlinkHandler(AuthenticatedHandler):
 
 class UplinkHandler(AuthenticatedHandler):
     def handle(self) -> None:
-        if not self.authenticate():
+        if not self.authenticate("UPLINK"):
             self.send_line("ERR AUTH")
             return
         if self.state.get() != "ACTIVE":

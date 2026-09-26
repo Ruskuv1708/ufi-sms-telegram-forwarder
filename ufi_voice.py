@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import hmac
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -22,6 +24,8 @@ DEFAULT_HOST = "192.168.100.1"
 CONTROL_PORT = 8765
 DOWNLINK_PORT = 8766
 UPLINK_PORT = 8767
+AUTH_DOMAIN = "UFI-AUTH-2"
+MAX_CONTROL_RESPONSE = 1024 * 1024
 
 
 class VoiceError(RuntimeError):
@@ -100,28 +104,61 @@ def run_adb(serial: str, *arguments: str) -> None:
 
 
 def save_config(config: dict[str, Any]) -> None:
+    validate_config(config)
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if os.name != "nt":
+        CONFIG_PATH.parent.chmod(0o700)
     temporary = CONFIG_PATH.with_suffix(".tmp")
     temporary.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-    temporary.chmod(0o600)
+    if os.name != "nt":
+        temporary.chmod(0o600)
     os.replace(temporary, CONFIG_PATH)
-    CONFIG_PATH.chmod(0o600)
+    if os.name != "nt":
+        CONFIG_PATH.chmod(0o600)
 
 
 def load_config() -> dict[str, Any]:
     if not CONFIG_PATH.exists():
         raise VoiceError(f"Gateway is not configured; run {Path(__file__).name} setup")
     mode = CONFIG_PATH.stat().st_mode & 0o777
-    if mode & 0o077:
+    if os.name != "nt" and mode & 0o077:
         raise VoiceError(f"Refusing to use non-private configuration {CONFIG_PATH}")
     config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    token = str(config.get("token", ""))
-    if len(token) != 64 or any(char not in "0123456789abcdef" for char in token):
-        raise VoiceError("Gateway configuration contains an invalid token")
+    validate_config(config)
     return config
 
 
+def validate_config(config: dict[str, Any]) -> None:
+    if not isinstance(config, dict):
+        raise VoiceError("Gateway configuration is not a JSON object")
+    token = config.get("token")
+    if not isinstance(token, str) or len(token) != 64 or any(
+            char not in "0123456789abcdef" for char in token):
+        raise VoiceError("Gateway configuration contains an invalid token")
+    host = config.get("host")
+    if not isinstance(host, str):
+        raise VoiceError("Gateway configuration contains an invalid host")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        raise VoiceError("Gateway host must be a literal private modem address") from None
+    allowed = ipaddress.ip_network("192.168.100.0/24")
+    if address not in allowed or address in (allowed.network_address, allowed.broadcast_address):
+        raise VoiceError("Gateway host is outside the supported modem LAN")
+
+
 def setup_gateway(serial: str, install: bool) -> None:
+    # This lower-level entry point is also callable directly, so repeat the
+    # hardware gate enforced by ufi_setup.py instead of trusting the caller.
+    import ufi_setup
+
+    report = ufi_setup.full_report(serial)
+    modem = report["devices"][0]
+    if modem.get("support") != "tested":
+        raise VoiceError(
+            "Refusing privileged gateway configuration on unverified hardware; "
+            "run ufi_setup.py doctor first"
+        )
     existing: dict[str, Any] = {}
     if CONFIG_PATH.exists():
         existing = load_config()
@@ -299,19 +336,50 @@ def read_line(stream: Any, maximum: int = 8192) -> bytes:
     return bytes(data)
 
 
-def authenticate_socket(config: dict[str, Any], port: int) -> tuple[socket.socket, Any]:
+def authenticate_socket(
+    config: dict[str, Any], port: int, binding: str | None = None
+) -> tuple[socket.socket, Any]:
+    validate_config(config)
+    if binding is None:
+        if port == DOWNLINK_PORT:
+            binding = "DOWNLINK"
+        elif port == UPLINK_PORT:
+            binding = "UPLINK"
+        else:
+            raise VoiceError("Control connections require a bound command")
     connection = socket.create_connection((str(config["host"]), port), timeout=5)
     connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     stream = connection.makefile("rwb", buffering=0)
-    stream.write(f"TOKEN {config['token']}\n".encode("ascii"))
-    return connection, stream
+    try:
+        hello = read_line(stream, 160).decode("ascii", "replace")
+        fields = hello.split(" ")
+        if (
+            len(fields) != 3
+            or fields[0] != "HELLO"
+            or fields[1] != "2"
+            or len(fields[2]) != 64
+            or any(character not in "0123456789abcdef" for character in fields[2])
+        ):
+            if hello.startswith("ERR "):
+                raise VoiceError(hello)
+            raise VoiceError(
+                "Incompatible gateway authentication; update the modem gateway"
+            )
+        material = f"{AUTH_DOMAIN}\n{port}\n{fields[2]}\n{binding}".encode("ascii")
+        proof = hmac.digest(str(config["token"]).encode("ascii"), material, "sha256").hex()
+        stream.write(f"AUTH {proof}\n".encode("ascii"))
+        return connection, stream
+    except BaseException:
+        stream.close()
+        connection.close()
+        raise
 
 
 def control_request(config: dict[str, Any], command: str) -> str:
-    connection, stream = authenticate_socket(config, CONTROL_PORT)
+    connection, stream = authenticate_socket(config, CONTROL_PORT, command)
     try:
         stream.write((command + "\n").encode("ascii"))
-        response = read_line(stream).decode("utf-8", "replace")
+        response = read_line(stream, MAX_CONTROL_RESPONSE).decode("utf-8", "replace")
     finally:
         stream.close()
         connection.close()
@@ -323,7 +391,12 @@ def control_request(config: dict[str, Any], command: str) -> str:
 
 
 def gateway_status(config: dict[str, Any]) -> dict[str, Any]:
-    return json.loads(control_request(config, "STATUS"))
+    status = json.loads(control_request(config, "STATUS"))
+    if not isinstance(status, dict):
+        raise VoiceError("Gateway returned an invalid status object")
+    if int(status.get("protocolVersion", 0)) != 2:
+        raise VoiceError("Gateway protocol version is incompatible")
+    return status
 
 
 class AudioSession:
@@ -372,6 +445,7 @@ class AudioSession:
             response = read_line(stream).decode("ascii", "replace")
             if not response.startswith("OK "):
                 raise VoiceError(response)
+            connection.settimeout(None)
             player = subprocess.Popen(
                 [
                     "paplay",
@@ -413,6 +487,7 @@ class AudioSession:
             response = read_line(stream).decode("ascii", "replace")
             if not response.startswith("OK "):
                 raise VoiceError(response)
+            connection.settimeout(None)
             recorder = subprocess.Popen(
                 [
                     "parec",
@@ -501,7 +576,8 @@ class VoiceWindow:
                 status = gateway_status(self.config)
                 self.root.after(0, lambda: self.apply_status(status))
             except Exception as error:
-                self.root.after(0, lambda: self.show_offline(str(error)))
+                detail = str(error)
+                self.root.after(0, lambda value=detail: self.show_offline(value))
 
         threading.Thread(target=worker, daemon=True).start()
         self.root.after(1000, self.poll)
@@ -564,7 +640,13 @@ class VoiceWindow:
             try:
                 control_request(self.config, command)
             except Exception as error:
-                self.root.after(0, lambda: self.messagebox.showerror("UFI Call Gateway", str(error)))
+                detail = str(error)
+                self.root.after(
+                    0,
+                    lambda value=detail: self.messagebox.showerror(
+                        "UFI Call Gateway", value
+                    ),
+                )
 
         threading.Thread(target=worker, daemon=True).start()
 

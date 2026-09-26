@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 from datetime import datetime
 import json
+import os
 from pathlib import Path
 import platform
 import socket
@@ -90,6 +91,7 @@ class SoundDeviceAudioSession:
             response = read_line(stream).decode("ascii", "replace")
             if not response.startswith("OK 8000 1 S16LE"):
                 raise VoiceError(response)
+            connection.settimeout(None)
             with self.sd.RawOutputStream(samplerate=8000, channels=1, dtype="int16") as output:
                 while not self.stop_event.is_set():
                     chunk = stream.read(2048)
@@ -107,6 +109,7 @@ class SoundDeviceAudioSession:
             response = read_line(stream).decode("ascii", "replace")
             if not response.startswith("OK 48000 1 S16LE"):
                 raise VoiceError(response)
+            connection.settimeout(None)
             with self.sd.RawInputStream(samplerate=48000, channels=1, dtype="int16") as source:
                 while not self.stop_event.is_set():
                     chunk, _overflowed = source.read(1920)
@@ -148,6 +151,8 @@ class UfiPhoneApp:
             self.window_icon = None
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.audio: Any = None
+        self.command_lock = threading.Lock()
+        self.pending_commands: set[str] = set()
         self.polling = False
         self.last_state = ""
         self.status: dict[str, Any] = {}
@@ -343,7 +348,8 @@ class UfiPhoneApp:
                 messages = sms_messages(self.config)
                 self.root.after(0, lambda: self.apply_snapshot(status, messages))
             except Exception as error:
-                self.root.after(0, lambda: self.show_offline(str(error)))
+                detail = str(error)
+                self.root.after(0, lambda value=detail: self.show_offline(value))
 
         threading.Thread(target=worker, daemon=True).start()
         self.root.after(2000, self.poll)
@@ -481,6 +487,11 @@ class UfiPhoneApp:
         self.command(command, on_success=success)
 
     def command(self, command: str, quiet: bool = False, on_success: Any = None) -> None:
+        with self.command_lock:
+            if command in self.pending_commands:
+                return
+            self.pending_commands.add(command)
+
         def worker() -> None:
             try:
                 control_request(self.config, command)
@@ -488,7 +499,14 @@ class UfiPhoneApp:
                     self.root.after(0, on_success)
             except Exception as error:
                 if not quiet:
-                    self.root.after(0, lambda: self.messagebox.showerror("UFI Phone", str(error)))
+                    detail = str(error)
+                    self.root.after(
+                        0,
+                        lambda value=detail: self.messagebox.showerror("UFI Phone", value),
+                    )
+            finally:
+                with self.command_lock:
+                    self.pending_commands.discard(command)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -516,6 +534,13 @@ class UfiPhoneApp:
 
 
 def main() -> int:
+    if os.environ.get("UFI_PHONE_PACKAGE_SELF_TEST") == "1":
+        import tkinter
+
+        interpreter = tkinter.Tcl()
+        if not interpreter.eval("info patchlevel"):
+            raise RuntimeError("Tcl/Tk runtime did not initialize")
+        return 0
     try:
         config = load_config()
         UfiPhoneApp(config).run()

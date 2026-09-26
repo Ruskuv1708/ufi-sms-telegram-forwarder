@@ -30,6 +30,15 @@ for required in "$javac_bin" "$platform_jar" "$aapt_bin" "$d8_bin" \
     fi
 done
 
+if [[ "$(uname -s)" != "Windows_NT" ]]; then
+    key_mode="$(stat -c '%a' "$platform_key")"
+    if (( (8#$key_mode & 077) != 0 )); then
+        echo "Refusing group/world-readable platform private key: $platform_key" >&2
+        echo "Fix it with: chmod 600 '$platform_key'" >&2
+        exit 1
+    fi
+fi
+
 expected_fingerprint="C8:A2:E9:BC:CF:59:7C:2F:B6:DC:66:BE:E2:93:FC:13:F2:FC:47:EC:77:BC:6B:2B:0D:52:C1:1F:51:19:2A:B8"
 actual_fingerprint="$(openssl x509 -in "$platform_cert" -noout -fingerprint -sha256 | cut -d= -f2)"
 if [[ "$actual_fingerprint" != "$expected_fingerprint" ]]; then

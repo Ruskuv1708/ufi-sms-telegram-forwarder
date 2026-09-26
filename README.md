@@ -168,8 +168,9 @@ Set `UFI_ANDROID_KEYSTORE`, `UFI_ANDROID_STORE_PASSWORD`,
 `UFI_ANDROID_KEY_ALIAS`, and `UFI_ANDROID_KEY_PASSWORD` to create a signed
 upload bundle. Without them, Gradle intentionally creates an unsigned review
 artifact. The GitHub workflow builds the AAB and Linux/Windows desktop
-executables; tagged versions publish release assets. Store copy, privacy and
-review declarations are in [`distribution/google-play`](distribution/google-play/).
+executables plus portable, interactive, and Debian Linux packages; tagged
+versions publish release assets. Store copy, privacy and review declarations
+are in [`distribution/google-play`](distribution/google-play/).
 
 Only the ordinary Android companion belongs in Google Play. The modem gateway
 and network guard require device-specific platform signing and remain behind
@@ -355,6 +356,11 @@ stay alive indefinitely. See the
 
 ## Security and privacy
 
+- Change the factory Wi-Fi password and router-admin password printed on the
+  modem label before enabling calls or SMS. Disable WPS and WAN administration
+  if the firmware provides those controls.
+- Never expose ADB or TCP ports `8765`–`8767` through WAN port forwarding.
+  The supported trust boundary is the private `192.168.100.0/24` modem LAN.
 - Never commit or paste a Telegram bot token. Revoke any token that has been
   exposed.
 - Direct UFI Phone SMS stays on the modem's private LAN and does not use
@@ -369,10 +375,18 @@ stay alive indefinitely. See the
 - The ADB control receiver is restricted to Android's privileged shell
   permission; ordinary installed apps cannot reconfigure it.
 - Voice servers bind only to `192.168.100.1`, reject clients outside the local
-  `/24`, and require the random token before every control or audio session.
+  `/24`, and use a fresh command-bound HMAC challenge for every control or
+  audio session. The random pairing token is no longer transmitted.
 - SMS, caller numbers, and call audio remain on the local modem LAN when using
   UFI Phone. The call/SMS gateway does not send them to Telegram or any cloud
   service.
+- LAN SMS/status payloads and raw call audio are not yet encrypted. Do not use
+  a shared or untrusted Wi-Fi network, and upgrade modem/tablet/desktop v2
+  components together.
+
+See the complete [risk register and protection plan](docs/risk-register.md)
+for ranked failure modes, implemented safeguards, deployment checks, and the
+remaining blockers before broad public use.
 
 ## License
 

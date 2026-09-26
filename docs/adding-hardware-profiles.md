@@ -47,6 +47,8 @@ voice control, audio, reboot recovery, and network isolation all pass.
 - Cold boot and repeated preferred-network-mode recovery.
 - LTE data before and after calls.
 - Unauthorized LAN client and wrong-token rejection.
+- Protocol-v2 challenge freshness, command-tamper rejection, and rejection of
+  unpaired or legacy plaintext clients. Upgrade gateway and clients together.
 - Each intended Uzbekistan operator/SIM/tariff using the matrix in the
   [operator report](uzbekistan-market-and-operator-compatibility.md).
 

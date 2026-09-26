@@ -19,8 +19,10 @@ import android.provider.Settings;
 import android.util.Log;
 
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class VoiceMonitorService extends Service {
     static final String ACTION_START = "com.ufi.voiceclient.START";
@@ -90,6 +92,7 @@ public final class VoiceMonitorService extends Service {
     private volatile int smsUnread;
     private volatile long smsRevision;
     private volatile String smsDetail = "Syncing messages";
+    private final AtomicBoolean smsSending = new AtomicBoolean(false);
 
     @Override
     public void onCreate() {
@@ -290,30 +293,44 @@ public final class VoiceMonitorService extends Service {
             broadcastStatus();
             return;
         }
+        if (!smsSending.compareAndSet(false, true)) {
+            smsDetail = "A message is already being sent";
+            broadcastStatus();
+            return;
+        }
         smsDetail = "Sending message";
         broadcastStatus();
-        executor.execute(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    SmsMessage sent = GatewayClient.smsSend(
-                            ClientConfig.host(VoiceMonitorService.this),
-                            ClientConfig.token(VoiceMonitorService.this),
-                            address,
-                            body);
-                    SmsStore.addSent(VoiceMonitorService.this, sent);
-                    smsUnread = SmsStore.unreadCount(VoiceMonitorService.this);
-                    smsRevision = SmsStore.revision(VoiceMonitorService.this);
-                    smsDetail = "Message sent";
-                    broadcastStatus();
-                    pollSms();
-                } catch (Exception error) {
-                    smsDetail = "Message not sent: " + friendlyError(error);
-                    Log.w(TAG, "SMS send failed: " + error.getClass().getSimpleName());
-                    broadcastStatus();
+        try {
+            executor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        SmsMessage sent = GatewayClient.smsSend(
+                                ClientConfig.host(VoiceMonitorService.this),
+                                ClientConfig.token(VoiceMonitorService.this),
+                                address,
+                                body);
+                        SmsStore.addSent(VoiceMonitorService.this, sent);
+                        smsUnread = SmsStore.unreadCount(VoiceMonitorService.this);
+                        smsRevision = SmsStore.revision(VoiceMonitorService.this);
+                        smsDetail = "Message sent";
+                        broadcastStatus();
+                        pollSms();
+                    } catch (Exception error) {
+                        smsDetail = "Message not sent: " + friendlyError(error);
+                        Log.w(TAG, "SMS send failed: " + error.getClass().getSimpleName());
+                        broadcastStatus();
+                    } finally {
+                        smsSending.set(false);
+                    }
                 }
-            }
-        });
+            });
+        } catch (RejectedExecutionException error) {
+            smsSending.set(false);
+            smsDetail = "Message not sent: service is stopping";
+            Log.w(TAG, "SMS send rejected while service was stopping");
+            broadcastStatus();
+        }
     }
 
     private void runSmsMarkRead(String address) {

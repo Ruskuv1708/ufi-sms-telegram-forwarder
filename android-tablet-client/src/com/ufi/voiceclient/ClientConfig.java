@@ -41,7 +41,15 @@ final class ClientConfig {
     }
 
     private static boolean validHost(String host) {
-        return host != null && host.matches("192\\.168\\.100\\.[0-9]{1,3}");
+        if (host == null || !host.matches("192\\.168\\.100\\.[0-9]{1,3}")) {
+            return false;
+        }
+        try {
+            int lastOctet = Integer.parseInt(host.substring(host.lastIndexOf('.') + 1));
+            return lastOctet >= 1 && lastOctet <= 254;
+        } catch (NumberFormatException error) {
+            return false;
+        }
     }
 
     static boolean validToken(String token) {

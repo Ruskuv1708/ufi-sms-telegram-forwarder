@@ -1,10 +1,12 @@
+#!/usr/bin/env xdg-open
 [Desktop Entry]
 Type=Application
 Name=UFI Phone
 Comment=Calls and SMS through a compatible UFI modem
 Exec=UFI-Phone
+TryExec=UFI-Phone
 Icon=ufi-phone
 Terminal=false
-Categories=Network;Telephony;Utility;
+Categories=Network;Telephony;
 Keywords=modem;phone;sms;call;
 StartupNotify=true

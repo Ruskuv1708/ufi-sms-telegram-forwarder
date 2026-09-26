@@ -8,9 +8,36 @@ java_home="${JAVA_HOME:-$toolchain_dir/jdk}"
 sdk_root="${ANDROID_SDK_ROOT:-$toolchain_dir/sdk}"
 build_tools="$sdk_root/build-tools/${UFI_BUILD_TOOLS_VERSION:-35.0.0}"
 platform_jar="$sdk_root/platforms/android-${UFI_PLATFORM_VERSION:-19}/android.jar"
+platform_key="$key_dir/platform.pk8"
+platform_cert="$key_dir/platform.x509.pem"
 
 export JAVA_HOME="$java_home"
 export PATH="$java_home/bin:$PATH"
+
+for required in "$java_home/bin/javac" "$platform_jar" "$build_tools/aapt" \
+        "$build_tools/d8" "$build_tools/zipalign" "$build_tools/apksigner" \
+        "$platform_key" "$platform_cert"; do
+    if [[ ! -e "$required" ]]; then
+        echo "Missing Android build dependency: $required" >&2
+        exit 1
+    fi
+done
+
+if [[ "$(uname -s)" != "Windows_NT" ]]; then
+    key_mode="$(stat -c '%a' "$platform_key")"
+    if (( (8#$key_mode & 077) != 0 )); then
+        echo "Refusing group/world-readable platform private key: $platform_key" >&2
+        echo "Fix it with: chmod 600 '$platform_key'" >&2
+        exit 1
+    fi
+fi
+
+expected_fingerprint="C8:A2:E9:BC:CF:59:7C:2F:B6:DC:66:BE:E2:93:FC:13:F2:FC:47:EC:77:BC:6B:2B:0D:52:C1:1F:51:19:2A:B8"
+actual_fingerprint="$(openssl x509 -in "$platform_cert" -noout -fingerprint -sha256 | cut -d= -f2)"
+if [[ "$actual_fingerprint" != "$expected_fingerprint" ]]; then
+    echo "The platform certificate does not match this modem firmware." >&2
+    exit 1
+fi
 
 build_dir="$project_dir/build"
 classes_dir="$build_dir/classes"
@@ -36,8 +63,8 @@ mapfile -t class_files < <(find "$classes_dir" -name '*.class' -type f | sort)
 )
 "$build_tools/zipalign" -f 4 "$unsigned_apk" "$aligned_apk"
 "$build_tools/apksigner" sign \
-    --key "$key_dir/platform.pk8" \
-    --cert "$key_dir/platform.x509.pem" \
+    --key "$platform_key" \
+    --cert "$platform_cert" \
     --min-sdk-version 19 \
     --out "$final_apk" "$aligned_apk"
 "$build_tools/apksigner" verify --verbose "$final_apk"

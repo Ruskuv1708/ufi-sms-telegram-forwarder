@@ -7,6 +7,7 @@ import android.os.IBinder;
 import android.os.Message;
 import android.os.SystemClock;
 import android.provider.Settings;
+import android.telephony.TelephonyManager;
 import android.util.Log;
 
 import java.lang.reflect.InvocationTargetException;
@@ -72,6 +73,10 @@ public final class NetworkGuardService extends Service {
     }
 
     private void runGuardCheck() {
+        if (isCallInProgress()) {
+            Log.i(TAG, "network-mode correction deferred until the call ends");
+            return;
+        }
         long now = SystemClock.elapsedRealtime();
         boolean scheduledBootReassert = nextBootReassert < BOOT_REASSERT_DELAYS_MS.length
                 && now - serviceStartedAt >= BOOT_REASSERT_DELAYS_MS[nextBootReassert];
@@ -82,6 +87,18 @@ public final class NetworkGuardService extends Service {
             if (scheduledBootReassert) {
                 nextBootReassert++;
             }
+        }
+    }
+
+    private boolean isCallInProgress() {
+        try {
+            TelephonyManager telephony = (TelephonyManager) getSystemService(
+                    TELEPHONY_SERVICE);
+            return telephony != null
+                    && telephony.getCallState() != TelephonyManager.CALL_STATE_IDLE;
+        } catch (SecurityException error) {
+            Log.w(TAG, "cannot read call state before network-mode correction");
+            return false;
         }
     }
 

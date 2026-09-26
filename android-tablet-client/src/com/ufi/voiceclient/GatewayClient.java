@@ -11,9 +11,14 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 final class GatewayClient {
     private static final int MAX_CONTROL_RESPONSE = 1024 * 1024;
+    private static final String AUTH_DOMAIN = "UFI-AUTH-2";
     static final int CONTROL_PORT = 8765;
     static final int DOWNLINK_PORT = 8766;
     static final int UPLINK_PORT = 8767;
@@ -63,7 +68,7 @@ final class GatewayClient {
     }
 
     static String control(String host, String token, String command) throws Exception {
-        Session session = open(host, token, CONTROL_PORT);
+        Session session = open(host, token, CONTROL_PORT, command);
         try {
             session.output.write((command + "\n").getBytes(StandardCharsets.US_ASCII));
             session.output.flush();
@@ -82,13 +87,16 @@ final class GatewayClient {
 
     static Status status(String host, String token) throws Exception {
         JSONObject json = new JSONObject(control(host, token, "STATUS"));
+        if (json.optInt("protocolVersion", 0) != 2) {
+            throw new IOException("Gateway protocol version is incompatible");
+        }
         return new Status(
                 json.optString("state", "UNKNOWN"),
                 json.optString("network", "UNKNOWN"),
                 json.optString("caller", ""),
                 json.optString("direction", ""),
-                json.optBoolean("callReady", true),
-                json.optInt("preferredNetworkMode", 9),
+                json.optBoolean("callReady", false),
+                json.optInt("preferredNetworkMode", -1),
                 json.optInt("modeRecoveries", 0));
     }
 
@@ -107,14 +115,61 @@ final class GatewayClient {
     }
 
     static Session open(String host, String token, int port) throws Exception {
+        String binding;
+        if (port == DOWNLINK_PORT) {
+            binding = "DOWNLINK";
+        } else if (port == UPLINK_PORT) {
+            binding = "UPLINK";
+        } else {
+            throw new IOException("Control connections require a bound command");
+        }
+        return open(host, token, port, binding);
+    }
+
+    private static Session open(String host, String token, int port, String binding)
+            throws Exception {
         Socket socket = new Socket();
         socket.connect(new InetSocketAddress(host, port), 4000);
         socket.setSoTimeout(5000);
         socket.setTcpNoDelay(true);
         Session session = new Session(socket);
-        session.output.write(("TOKEN " + token + "\n").getBytes(StandardCharsets.US_ASCII));
-        session.output.flush();
-        return session;
+        try {
+            String hello = readLine(session.input, 160);
+            String[] fields = hello.split(" ");
+            if (fields.length != 3 || !"HELLO".equals(fields[0])
+                    || !"2".equals(fields[1]) || !fields[2].matches("[0-9a-f]{64}")) {
+                throw new IOException(hello.startsWith("ERR ")
+                        ? hello : "Incompatible or invalid gateway authentication handshake");
+            }
+            String proof = authProof(token, port, fields[2], binding);
+            session.output.write(("AUTH " + proof + "\n").getBytes(StandardCharsets.US_ASCII));
+            session.output.flush();
+            return session;
+        } catch (Exception error) {
+            session.close();
+            throw error;
+        }
+    }
+
+    private static String authProof(String token, int port, String nonce, String binding)
+            throws Exception {
+        if (token == null || !token.matches("[0-9a-f]{64}")) {
+            throw new IOException("Pairing token is invalid");
+        }
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(token.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        byte[] digest = mac.doFinal(
+                (AUTH_DOMAIN + "\n" + port + "\n" + nonce + "\n" + binding)
+                        .getBytes(StandardCharsets.UTF_8));
+        StringBuilder result = new StringBuilder(digest.length * 2);
+        for (byte item : digest) {
+            int value = item & 0xff;
+            if (value < 16) {
+                result.append('0');
+            }
+            result.append(Integer.toHexString(value));
+        }
+        return result.toString().toLowerCase(Locale.US);
     }
 
     static String readLine(InputStream input, int maximum) throws IOException {

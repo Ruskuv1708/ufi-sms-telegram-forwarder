@@ -11,6 +11,8 @@ class HardwareProfileTests(unittest.TestCase):
             "baseband": "UFI003_CT 20220903",
             "usbId": "05c6:90b4",
             "lanHost": "192.168.100.1",
+            "telephony": True,
+            "microphone": True,
         }
         profile, notes = ufi_setup.match_profile(report, ufi_setup.load_profiles())
         self.assertIsNotNone(profile)
@@ -24,11 +26,27 @@ class HardwareProfileTests(unittest.TestCase):
             "baseband": "UNRELATED_FIRMWARE",
             "usbId": "1234:5678",
             "lanHost": "192.168.100.1",
+            "telephony": True,
+            "microphone": True,
         }
         profile, notes = ufi_setup.match_profile(report, ufi_setup.load_profiles())
         self.assertIsNone(profile)
         self.assertIn("baseband family differs", notes)
         self.assertIn("USB ID differs", notes)
+
+    def test_missing_required_capability_does_not_match(self) -> None:
+        report = {
+            "productDevice": "msm8916_32_512",
+            "androidSdk": 19,
+            "baseband": "UFI003_CT 20220903",
+            "usbId": "05c6:90b4",
+            "lanHost": "192.168.100.1",
+            "telephony": True,
+            "microphone": False,
+        }
+        profile, notes = ufi_setup.match_profile(report, ufi_setup.load_profiles())
+        self.assertIsNone(profile)
+        self.assertIn("microphone capability is unavailable", notes)
 
 
 if __name__ == "__main__":

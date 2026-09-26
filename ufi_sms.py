@@ -27,6 +27,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from collections import deque
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -41,6 +42,10 @@ SERIAL_INTERFACE = 2
 DEFAULT_ARCHIVE = Path.home() / ".local" / "share" / "ufi-sms" / "inbox.jsonl"
 DEFAULT_TELEGRAM_CONFIG = Path.home() / ".config" / "ufi-sms" / "telegram.json"
 DEFAULT_TELEGRAM_STATE = Path.home() / ".local" / "share" / "ufi-sms" / "telegram-sent.txt"
+DEFAULT_ARCHIVE_MAX_BYTES = 20 * 1024 * 1024
+DEFAULT_ARCHIVE_BACKUPS = 3
+MAX_TELEGRAM_FINGERPRINTS = 50_000
+MAX_PENDING_MESSAGES = 5_000
 STATUS_NAMES = {
     0: "REC UNREAD",
     1: "REC READ",
@@ -552,32 +557,87 @@ def message_key(message: SmsMessage) -> tuple[str, int, str]:
     return message.storage, message.index, message.raw_pdu
 
 
-def load_archive(path: Path) -> tuple[list[SmsMessage], set[tuple[str, int, str]]]:
+def trim_pending_state(
+    messages: list[SmsMessage], archived: set[tuple[str, int, str]]
+) -> None:
+    if len(messages) <= MAX_PENDING_MESSAGES:
+        return
+    del messages[:-MAX_PENDING_MESSAGES]
+    archived.clear()
+    archived.update(message_key(message) for message in messages)
+
+
+def load_archive(
+    path: Path, backups: int = DEFAULT_ARCHIVE_BACKUPS
+) -> tuple[list[SmsMessage], set[tuple[str, int, str]]]:
     messages: list[SmsMessage] = []
     keys: set[tuple[str, int, str]] = set()
-    if not path.exists():
+    candidates = [
+        path.with_name(f"{path.name}.{index}")
+        for index in range(backups, 0, -1)
+    ] + [path]
+    if not any(candidate.exists() for candidate in candidates):
         return messages, keys
     try:
-        with path.open("r", encoding="utf-8") as archive:
-            for line in archive:
-                try:
-                    record = json.loads(line)
-                    message = SmsMessage(**record)
-                except (json.JSONDecodeError, TypeError):
-                    continue
-                messages.append(message)
-                keys.add(message_key(message))
+        for candidate in candidates:
+            if not candidate.exists():
+                continue
+            with candidate.open("r", encoding="utf-8") as archive:
+                for line in archive:
+                    try:
+                        record = json.loads(line)
+                        message = SmsMessage(**record)
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+                    messages.append(message)
+                    keys.add(message_key(message))
     except OSError as exc:
         raise ModemError(f"Cannot read SMS archive {path}: {exc}") from exc
     return messages, keys
 
 
-def append_archive(path: Path, message: SmsMessage) -> None:
+def rotate_archive(path: Path, incoming_bytes: int, maximum_bytes: int, backups: int) -> None:
+    if maximum_bytes <= 0 or not path.exists():
+        return
+    try:
+        current_size = path.stat().st_size
+    except OSError as exc:
+        raise ModemError(f"Cannot inspect SMS archive {path}: {exc}") from exc
+    if current_size + incoming_bytes <= maximum_bytes:
+        return
+    try:
+        if backups <= 0:
+            path.unlink()
+            return
+        oldest = path.with_name(f"{path.name}.{backups}")
+        try:
+            oldest.unlink()
+        except FileNotFoundError:
+            pass
+        for index in range(backups - 1, 0, -1):
+            source = path.with_name(f"{path.name}.{index}")
+            destination = path.with_name(f"{path.name}.{index + 1}")
+            if source.exists():
+                os.replace(source, destination)
+        os.replace(path, path.with_name(f"{path.name}.1"))
+    except OSError as exc:
+        raise ModemError(f"Cannot rotate SMS archive {path}: {exc}") from exc
+
+
+def append_archive(
+    path: Path,
+    message: SmsMessage,
+    maximum_bytes: int = DEFAULT_ARCHIVE_MAX_BYTES,
+    backups: int = DEFAULT_ARCHIVE_BACKUPS,
+) -> None:
+    line = json.dumps(asdict(message), ensure_ascii=False, separators=(",", ":")) + "\n"
     try:
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(path.parent, 0o700)
+        rotate_archive(path, len(line.encode("utf-8")), maximum_bytes, backups)
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         with os.fdopen(descriptor, "a", encoding="utf-8") as archive:
-            archive.write(json.dumps(asdict(message), ensure_ascii=False, separators=(",", ":")) + "\n")
+            archive.write(line)
         os.chmod(path, 0o600)
     except OSError as exc:
         raise ModemError(f"Cannot write SMS archive {path}: {exc}") from exc
@@ -716,7 +776,11 @@ def load_telegram_sent(path: Path) -> set[str]:
         return set()
     try:
         with path.open("r", encoding="ascii") as source:
-            return {line.strip() for line in source if re.fullmatch(r"[0-9a-f]{64}\n?", line)}
+            values: deque[str] = deque(maxlen=MAX_TELEGRAM_FINGERPRINTS)
+            for line in source:
+                if re.fullmatch(r"[0-9a-f]{64}\n?", line):
+                    values.append(line.strip())
+            return set(values)
     except OSError as exc:
         raise TelegramError(f"Cannot read Telegram delivery state {path}: {exc}") from exc
 
@@ -736,6 +800,34 @@ def append_telegram_sent(path: Path, fingerprints: Iterable[str]) -> set[str]:
     except OSError as exc:
         raise TelegramError(f"Cannot write Telegram delivery state {path}: {exc}") from exc
     return set(values)
+
+
+def compact_telegram_sent(path: Path, fingerprints: set[str]) -> None:
+    if len(fingerprints) <= MAX_TELEGRAM_FINGERPRINTS:
+        return
+    retained: deque[str] = deque(maxlen=MAX_TELEGRAM_FINGERPRINTS)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with path.open("r", encoding="ascii") as source:
+            for line in source:
+                value = line.strip()
+                if re.fullmatch(r"[0-9a-f]{64}", value):
+                    retained.append(value)
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w", encoding="ascii") as output:
+            for fingerprint in retained:
+                output.write(fingerprint + "\n")
+        os.replace(temporary, path)
+        os.chmod(path, 0o600)
+        fingerprints.clear()
+        fingerprints.update(retained)
+    except OSError as exc:
+        raise TelegramError(f"Cannot compact Telegram delivery state {path}: {exc}") from exc
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
 
 
 class TelegramForwarder:
@@ -769,6 +861,7 @@ class TelegramForwarder:
             return
         try:
             self.sent.update(append_telegram_sent(self.state_path, [fingerprint]))
+            compact_telegram_sent(self.state_path, self.sent)
         except TelegramError as exc:
             self.warn(exc)
 
@@ -779,6 +872,7 @@ class TelegramForwarder:
         try:
             send_telegram_text(self.config, telegram_message_text(message))
             self.sent.update(append_telegram_sent(self.state_path, [fingerprint]))
+            compact_telegram_sent(self.state_path, self.sent)
         except TelegramError as exc:
             self.warn(exc)
             return False
@@ -951,9 +1045,15 @@ def deliver_message(
 ) -> None:
     key = message_key(message)
     if args.archive and key not in archived:
-        append_archive(Path(args.archive).expanduser(), message)
+        append_archive(
+            Path(args.archive).expanduser(),
+            message,
+            args.archive_max_bytes,
+            args.archive_backups,
+        )
         archived.add(key)
         saved_messages.append(message)
+        trim_pending_state(saved_messages, archived)
     if not args.quiet:
         print_messages([message], args.json)
         sys.stdout.flush()
@@ -1022,7 +1122,10 @@ def command_watch(args: argparse.Namespace) -> int:
     saved_messages: list[SmsMessage] = []
     baseline_complete = False
     if args.archive:
-        saved_messages, archived = load_archive(Path(args.archive).expanduser())
+        saved_messages, archived = load_archive(
+            Path(args.archive).expanduser(), args.archive_backups
+        )
+        trim_pending_state(saved_messages, archived)
     telegram = (
         TelegramForwarder(Path(args.telegram_config).expanduser(), Path(args.telegram_state).expanduser())
         if args.telegram
@@ -1035,9 +1138,11 @@ def command_watch(args: argparse.Namespace) -> int:
     while True:
         try:
             with UfiModem() as modem:
+                current_keys: set[tuple[str, int, str]] = set()
                 for storage in ("ME", "SM"):
                     for message in modem.list_messages(storage):
                         key = message_key(message)
+                        current_keys.add(key)
                         is_new = key not in known
                         known.add(key)
                         if not is_new:
@@ -1048,15 +1153,23 @@ def command_watch(args: argparse.Namespace) -> int:
                             deliver_message(message, args, archived, saved_messages, telegram)
                         else:
                             if args.archive and key not in archived:
-                                append_archive(Path(args.archive).expanduser(), message)
+                                append_archive(
+                                    Path(args.archive).expanduser(),
+                                    message,
+                                    args.archive_max_bytes,
+                                    args.archive_backups,
+                                )
                                 archived.add(key)
                                 saved_messages.append(message)
+                                trim_pending_state(saved_messages, archived)
                                 if telegram is not None:
                                     # Do not forward messages that predate the first
                                     # successful watcher scan.
                                     telegram.remember(message)
                             if args.existing and not args.quiet:
                                 print_messages([message], args.json)
+                known.intersection_update(current_keys)
+                known.update(current_keys)
                 baseline_complete = True
                 modem.configure_sms(args.storage, notifications=True)
                 last_poll = 0.0
@@ -1076,12 +1189,16 @@ def command_watch(args: argparse.Namespace) -> int:
                             print(f"Warning: {exc}", file=sys.stderr)
                     now = time.monotonic()
                     if now - last_poll >= args.interval:
+                        current_keys = set()
                         for storage in ("ME", "SM"):
                             for message in modem.list_messages(storage):
                                 key = message_key(message)
+                                current_keys.add(key)
                                 if key not in known:
                                     known.add(key)
                                     deliver_message(message, args, archived, saved_messages, telegram)
+                        known.intersection_update(current_keys)
+                        known.update(current_keys)
                         last_poll = now
                     if telegram is not None and now - last_telegram_retry >= args.telegram_retry:
                         telegram.refresh()
@@ -1095,6 +1212,36 @@ def command_watch(args: argparse.Namespace) -> int:
                 raise ModemError(str(exc)) from exc
             print(f"Waiting for modem: {exc}", file=sys.stderr)
             time.sleep(3)
+
+
+def bounded_float(minimum: float, maximum: float):
+    def parse(value: str) -> float:
+        try:
+            number = float(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError("must be a number") from None
+        if not minimum <= number <= maximum:
+            raise argparse.ArgumentTypeError(
+                f"must be between {minimum:g} and {maximum:g}"
+            )
+        return number
+
+    return parse
+
+
+def bounded_int(minimum: int, maximum: int):
+    def parse(value: str) -> int:
+        try:
+            number = int(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError("must be an integer") from None
+        if not minimum <= number <= maximum:
+            raise argparse.ArgumentTypeError(
+                f"must be between {minimum} and {maximum}"
+            )
+        return number
+
+    return parse
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1156,16 +1303,38 @@ def build_parser() -> argparse.ArgumentParser:
 
     watch_parser = subparsers.add_parser("watch", help="Print new messages as they arrive")
     watch_parser.add_argument("--storage", choices=("ME", "SM"), default="ME")
-    watch_parser.add_argument("--interval", type=float, default=5.0, help="Fallback polling interval in seconds")
+    watch_parser.add_argument(
+        "--interval",
+        type=bounded_float(0.5, 3600.0),
+        default=5.0,
+        help="Fallback polling interval in seconds (0.5 to 3600)",
+    )
     watch_parser.add_argument("--existing", action="store_true", help="Print messages already stored before watching")
     watch_parser.add_argument("--json", action="store_true")
     watch_parser.add_argument("--notify", action="store_true", help="Show a desktop notification for each new message")
     watch_parser.add_argument("--quiet", action="store_true", help="Do not print message bodies to standard output")
     watch_parser.add_argument("--archive", default=str(DEFAULT_ARCHIVE), help="Append received messages to this private JSONL file")
     watch_parser.add_argument("--no-archive", dest="archive", action="store_const", const=None)
+    watch_parser.add_argument(
+        "--archive-max-mib",
+        type=bounded_float(1.0, 1024.0),
+        default=DEFAULT_ARCHIVE_MAX_BYTES / (1024 * 1024),
+        help="Rotate the private SMS archive at this size (default: 20 MiB)",
+    )
+    watch_parser.add_argument(
+        "--archive-backups",
+        type=bounded_int(0, 20),
+        default=DEFAULT_ARCHIVE_BACKUPS,
+        help="Number of rotated SMS archives to retain (default: 3)",
+    )
     watch_parser.add_argument("--telegram-config", default=str(DEFAULT_TELEGRAM_CONFIG))
     watch_parser.add_argument("--telegram-state", default=str(DEFAULT_TELEGRAM_STATE))
-    watch_parser.add_argument("--telegram-retry", type=float, default=30.0, help="Telegram retry interval in seconds")
+    watch_parser.add_argument(
+        "--telegram-retry",
+        type=bounded_float(1.0, 86400.0),
+        default=30.0,
+        help="Telegram retry interval in seconds (1 to 86400)",
+    )
     watch_parser.add_argument("--no-telegram", dest="telegram", action="store_false", help="Disable Telegram forwarding")
     watch_parser.add_argument("--no-reconnect", dest="reconnect", action="store_false", help="Exit if the modem disconnects")
     watch_parser.set_defaults(handler=command_watch, reconnect=True, telegram=True)
@@ -1175,6 +1344,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+    if hasattr(args, "archive_max_mib"):
+        args.archive_max_bytes = int(args.archive_max_mib * 1024 * 1024)
     try:
         return int(args.handler(args))
     except ModemError as exc:

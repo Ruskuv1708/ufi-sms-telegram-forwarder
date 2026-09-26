@@ -52,7 +52,16 @@ def load_profiles() -> list[dict[str, Any]]:
     data = json.loads(PROFILES_PATH.read_text(encoding="utf-8"))
     if data.get("schemaVersion") != 1 or not isinstance(data.get("profiles"), list):
         raise SetupError("Unsupported hardware profile schema")
-    return list(data["profiles"])
+    profiles = list(data["profiles"])
+    for profile in profiles:
+        if not isinstance(profile, dict) or not isinstance(profile.get("id"), str):
+            raise SetupError("Hardware profile is missing a stable ID")
+        if profile.get("support") not in ("tested", "experimental", "unverified"):
+            raise SetupError(f"Hardware profile {profile['id']} has an invalid support level")
+        if not isinstance(profile.get("match"), dict) or not isinstance(
+                profile.get("capabilities"), dict):
+            raise SetupError(f"Hardware profile {profile['id']} is incomplete")
+    return profiles
 
 
 def connected_devices() -> list[dict[str, str]]:
@@ -144,6 +153,21 @@ def match_profile(
         expected_host = str(match.get("lanHost", ""))
         if expected_host and report.get("lanHost") not in ("", expected_host):
             reasons.append("LAN address differs")
+        capabilities = profile.get("capabilities", {})
+        requires_telephony = any(
+            bool(capabilities.get(name))
+            for name in (
+                "smsRead",
+                "smsSend",
+                "incomingCalls",
+                "outgoingCalls",
+                "twoWayCallAudio",
+            )
+        )
+        if requires_telephony and report.get("telephony") is not True:
+            reasons.append("telephony capability is unavailable")
+        if capabilities.get("twoWayCallAudio") and report.get("microphone") is not True:
+            reasons.append("microphone capability is unavailable")
         if not reasons:
             return profile, ["exact tested hardware profile"]
         if not best_reasons or len(reasons) < len(best_reasons):
@@ -164,6 +188,34 @@ def build_readiness() -> dict[str, bool]:
             Path.home() / ".cache" / "ufi-sms-android" / "aosp-platform",
         )
     )
+    platform_key = platform_keys / "platform.pk8"
+    platform_cert = platform_keys / "platform.x509.pem"
+    expected_fingerprints = {
+        str(profile.get("installation", {}).get(
+            "expectedPlatformCertificateSha256", ""
+        )).upper()
+        for profile in load_profiles()
+        if profile.get("support") == "tested"
+    }
+    actual_fingerprint = ""
+    if platform_cert.exists() and shutil.which("openssl"):
+        result = run(
+            [
+                "openssl",
+                "x509",
+                "-in",
+                str(platform_cert),
+                "-noout",
+                "-fingerprint",
+                "-sha256",
+            ],
+            check=False,
+        )
+        if result.returncode == 0 and "=" in result.stdout:
+            actual_fingerprint = result.stdout.strip().split("=", 1)[1].upper()
+    key_is_private = platform_key.exists()
+    if os.name != "nt" and key_is_private:
+        key_is_private = (platform_key.stat().st_mode & 0o077) == 0
     return {
         "adb": bool(shutil.which("adb")),
         "jdk": (toolchain / "jdk" / "bin" / "javac").exists(),
@@ -180,8 +232,10 @@ def build_readiness() -> dict[str, bool]:
             toolchain / "sdk" / "build-tools" / "36.0.0" / "aapt"
         ).exists(),
         "testedPlatformKey": (
-            platform_keys / "platform.pk8"
-        ).exists(),
+            key_is_private
+            and platform_cert.exists()
+            and actual_fingerprint in expected_fingerprints
+        ),
     }
 
 
