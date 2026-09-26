@@ -24,6 +24,8 @@ low-cost modem firmware.
 
 - Familiar before novel: Calls, Keypad, and Messages use the vocabulary and
   hierarchy people recognize from Google Phone and Messages.
+- One obvious setup path: detect the devices, explain the plan, pair once, and
+  recover in the UI without asking users to understand ADB serials or tokens.
 - Quiet when healthy: routine sync is invisible; failures and unsafe call mode
   are explicit and actionable.
 - One primary action per screen: call, answer, or send.
@@ -50,6 +52,8 @@ low-cost modem firmware.
 - Modem gateway: source-built, profile-gated ADB install; never a universal
   store binary.
 - Linux/Windows: portable desktop binaries, with optional native installers.
+  A guided first-run screen and private pairing-file association make a second
+  computer a file-open operation rather than a configuration exercise.
 - macOS/iPadOS: shared Swift protocol core, macOS first, then an iPad foreground
   companion and a deliberate decision about compliant background ringing.
 
@@ -60,8 +64,10 @@ low-cost modem firmware.
 3. Recruit the required Android closed-test cohort and collect reliability,
    battery, audio, and reconnect data.
 4. Publish the first signed Android and desktop release from one tag.
-5. Port one second modem profile without weakening the exact-match installer.
-6. Prototype the shared Swift protocol package and macOS client.
+5. Measure clean-machine setup time and turn the remaining build prerequisites
+   into a verified bootstrap without weakening the exact-match installer.
+6. Port one second modem profile behind the same guarded setup experience.
+7. Prototype the shared Swift protocol package and macOS client.
 
 ## Measures that matter
 

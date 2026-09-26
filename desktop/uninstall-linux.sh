@@ -18,6 +18,7 @@ rm -f \
     "$HOME/.local/bin/UFI-Phone" \
     "$HOME/.local/share/applications/ufi-phone.desktop" \
     "$HOME/.local/share/icons/hicolor/512x512/apps/ufi-phone.png" \
+    "$HOME/.local/share/mime/packages/ufi-phone-pairing.xml" \
     "$HOME/.local/share/metainfo/io.github.ruskuv1708.ufiphone.metainfo.xml" \
     "$HOME/.local/share/ufi-phone/uninstall.sh"
 rmdir "$HOME/.local/share/ufi-phone" 2>/dev/null || true
@@ -27,6 +28,9 @@ if command -v update-desktop-database >/dev/null 2>&1; then
 fi
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
     gtk-update-icon-cache -q -t "$HOME/.local/share/icons/hicolor" || true
+fi
+if command -v update-mime-database >/dev/null 2>&1; then
+    update-mime-database "$HOME/.local/share/mime" || true
 fi
 
 echo "UFI Phone was removed. Pairing data and call history were kept in your config directory."

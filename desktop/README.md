@@ -14,6 +14,18 @@ fallback. The Windows package includes the optional `sounddevice`/PortAudio
 backend. Keep the desktop on the modem's local network and pair the gateway
 once with `./ufi_setup.py install` or `./ufi_voice.py setup`.
 
+The simplest first setup is now:
+
+```bash
+./setup.sh
+```
+
+If the modem was provisioned on another computer, export a private pairing
+file there with `./ufi_setup.py pairing --output my-modem.ufi-phone`. On the
+new Linux or Windows computer, double-click the file or open UFI Phone and use
+**Connection → Import pairing file**. The app starts with a guided Connection
+screen when no pairing exists instead of exiting with an error.
+
 Build a native executable with Python 3.12+ and PyInstaller:
 
 ```bash
@@ -71,6 +83,6 @@ user's desktop. Use the `.run` package when the desktop-icon prompt is wanted.
 Official Linux release binaries target glibc 2.35 or later (for example,
 Ubuntu 22.04, Debian 12, and Linux Mint 21 or later).
 
-The repository also includes `windows/UFI-Phone.iss` for producing a standard
-Inno Setup installer from the Windows executable. The GitHub artifact remains
-portable and can run without an installer.
+The Windows CI artifact contains both the portable executable and a standard
+`UFI-Phone-Setup.exe` installer. The installer adds Start-menu integration,
+an optional desktop shortcut, and one-click `.ufi-phone` pairing-file import.

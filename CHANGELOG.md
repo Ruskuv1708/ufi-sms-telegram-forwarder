@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Added an auto-detecting `./setup.sh` flow, dry-run planning, desktop-only
+  setup, and private pairing-file export for additional computers.
+- Reworked the desktop first run into a guided Connection screen, added native
+  Linux/Windows `.ufi-phone` file handling, and simplified the core visual
+  hierarchy and connection states.
+- Added actionable Android not-paired/offline cards and a quieter readiness
+  status while keeping detailed radio recovery information in Connection.
 - Replaced plaintext LAN token transmission with nonce-based, command-bound
   HMAC authentication, connection limits, and protocol compatibility checks.
 - Added bounded SMS/archive/retry storage, duplicate-send suppression, safer

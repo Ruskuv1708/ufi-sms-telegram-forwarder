@@ -127,6 +127,7 @@ install -d \
     "$bundle_dir/usr/bin" \
     "$bundle_dir/usr/share/applications" \
     "$bundle_dir/usr/share/icons/hicolor/512x512/apps" \
+    "$bundle_dir/usr/share/mime/packages" \
     "$bundle_dir/usr/share/metainfo" \
     "$bundle_dir/usr/share/doc/ufi-phone"
 install -m755 "$binary" "$bundle_dir/usr/bin/UFI-Phone"
@@ -137,6 +138,8 @@ install -m644 "$script_dir/ufi-phone.desktop" \
     "$bundle_dir/usr/share/applications/ufi-phone.desktop"
 install -m644 "$project_dir/assets/ufi-phone.png" \
     "$bundle_dir/usr/share/icons/hicolor/512x512/apps/ufi-phone.png"
+install -m644 "$script_dir/ufi-phone-pairing.xml" \
+    "$bundle_dir/usr/share/mime/packages/ufi-phone-pairing.xml"
 sed -E \
     "s|<release version=\"[^\"]+\" date=\"[^\"]+\" */>|<release version=\"$version\" date=\"$release_date\" />|" \
     "$script_dir/io.github.ruskuv1708.ufiphone.metainfo.xml" \

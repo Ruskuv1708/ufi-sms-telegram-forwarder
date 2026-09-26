@@ -68,6 +68,9 @@ public class MainActivity extends Activity {
     private View keypadScreen;
     private FrameLayout messagesScreen;
     private LinearLayout callsContainer;
+    private LinearLayout connectionHelpCard;
+    private TextView connectionHelpTitle;
+    private TextView connectionHelpDetail;
     private LinearLayout callBanner;
     private TextView callStateView;
     private TextView callNumberView;
@@ -268,7 +271,7 @@ public class MainActivity extends Activity {
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setPadding(dp(28), dp(10), dp(20), dp(6));
 
-        TextView title = text("Phone", isLandscape() ? 27 : 31, COLOR_TEXT, true);
+        TextView title = text("UFI Phone", isLandscape() ? 27 : 31, COLOR_TEXT, true);
         bar.addView(title);
         bar.addView(new Space(this), new LinearLayout.LayoutParams(0, 1, 1f));
 
@@ -388,6 +391,13 @@ public class MainActivity extends Activity {
         heading.addView(seeAll);
         content.addView(heading);
 
+        connectionHelpCard = buildConnectionHelpCard();
+        LinearLayout.LayoutParams helpParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        helpParams.setMargins(0, dp(16), 0, 0);
+        content.addView(connectionHelpCard, helpParams);
+
         callsContainer = new LinearLayout(this);
         callsContainer.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams callsParams = new LinearLayout.LayoutParams(
@@ -411,6 +421,30 @@ public class MainActivity extends Activity {
         dialpadParams.setMargins(0, 0, dp(28), dp(24));
         screen.addView(dialpad, dialpadParams);
         return screen;
+    }
+
+    private LinearLayout buildConnectionHelpCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(20), dp(17), dp(20), dp(17));
+        card.setBackground(rounded(COLOR_BLUE_SOFT, 20));
+        card.setVisibility(View.GONE);
+        connectionHelpTitle = text("Finish setup", 18, COLOR_TEXT, true);
+        card.addView(connectionHelpTitle);
+        connectionHelpDetail = text(
+                "Connect this tablet by USB once, then run ./setup.sh on the setup computer.",
+                14, COLOR_MUTED, false);
+        connectionHelpDetail.setPadding(0, dp(5), 0, dp(12));
+        card.addView(connectionHelpDetail);
+        Button help = outlineButton("Setup help");
+        help.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                showConnectionDialog();
+            }
+        });
+        card.addView(help, new LinearLayout.LayoutParams(dp(126), dp(44)));
+        return card;
     }
 
     private View buildKeypadScreen() {
@@ -1006,6 +1040,7 @@ public class MainActivity extends Activity {
 
         updateStatusPill();
         updateCallBanner(caller, detail);
+        updateConnectionHelp();
         boolean canDial = "IDLE".equals(lastState) && lastCallReady;
         keypadCallButton.setEnabled(canDial);
         keypadCallButton.setAlpha(canDial ? 1f : 0.35f);
@@ -1031,26 +1066,46 @@ public class MainActivity extends Activity {
         int dot;
         int background;
         String value;
-        if ("OFFLINE".equals(lastState) || "NOT_PAIRED".equals(lastState)) {
+        if ("NOT_PAIRED".equals(lastState)) {
+            dot = COLOR_RED;
+            background = 0xffffe9e7;
+            value = "Setup needed";
+        } else if ("OFFLINE".equals(lastState)) {
             dot = COLOR_RED;
             background = 0xffffe9e7;
             value = "Modem offline";
         } else if (!lastCallReady) {
             dot = 0xffe58b00;
             background = 0xfffff1d8;
-            value = "Correcting call mode";
+            value = "Repairing calls";
         } else {
             dot = COLOR_GREEN;
             background = COLOR_GREEN_SOFT;
-            value = "Modem · " + (lastNetwork.length() == 0 ? "Connected" : lastNetwork)
-                    + " · Ready";
-            if (lastModeRecoveries > 0) {
-                value += " · recovered " + lastModeRecoveries + "×";
-            }
+            value = (lastNetwork.length() == 0 ? "Connected" : lastNetwork) + " · Ready";
         }
         statusDot.setBackground(rounded(dot, 20));
         statusText.setText(value);
         ((View) statusText.getParent()).setBackground(rounded(background, 24));
+    }
+
+    private void updateConnectionHelp() {
+        if (connectionHelpCard == null) {
+            return;
+        }
+        if ("NOT_PAIRED".equals(lastState)) {
+            connectionHelpTitle.setText("Finish setup");
+            connectionHelpDetail.setText(
+                    "Connect this tablet by USB once, then run ./setup.sh on the setup computer."
+                            + " No Telegram account is required.");
+            connectionHelpCard.setVisibility(View.VISIBLE);
+        } else if ("OFFLINE".equals(lastState)) {
+            connectionHelpTitle.setText("Reconnect to the modem");
+            connectionHelpDetail.setText(
+                    "Join the modem's Wi-Fi network. UFI Phone will reconnect automatically.");
+            connectionHelpCard.setVisibility(View.VISIBLE);
+        } else {
+            connectionHelpCard.setVisibility(View.GONE);
+        }
     }
 
     private void updateCallBanner(String caller, String detail) {
@@ -1162,6 +1217,17 @@ public class MainActivity extends Activity {
     }
 
     private void showConnectionDialog() {
+        if ("NOT_PAIRED".equals(lastState)) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Finish setup")
+                    .setMessage("1. Connect the modem and this tablet to the setup computer by USB."
+                            + "\n2. Allow USB debugging on both devices."
+                            + "\n3. Run ./setup.sh from the UFI Phone project folder."
+                            + "\n\nThe installer detects both devices, pairs them privately, and opens the app.")
+                    .setPositiveButton("Close", null)
+                    .show();
+            return;
+        }
         String readiness = lastCallReady ? "Ready for calls" : "Call mode is being corrected";
         String recoveries = lastModeRecoveries == 0
                 ? "No LTE-only resets detected"

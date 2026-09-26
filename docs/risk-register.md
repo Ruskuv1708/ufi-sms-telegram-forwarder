@@ -49,7 +49,7 @@ mandatory.
 | Medium | Hidden Android APIs differ across firmware | Guard, answer/hangup, SMS, or audio silently fails | Exact hardware profile; compile checks; explicit errors; refusal on unverified devices | Hardware-in-loop tests are required; source compilation cannot prove runtime compatibility |
 | Medium | 2G/3G voice fallback is withdrawn or weak | Incoming calls return busy despite LTE data | Readiness warning and automatic LTE/3G mode recovery | This firmware has no usable IMS/VoLTE stack; carrier network policy can make voice impossible |
 | Low | Corrupt local JSON/history cache | UI crash or lost history | Invalid rows are ignored; atomic replacement; bounded histories | No automated cloud backup by design |
-| Low | Windows user has no pairing/config onboarding | Desktop app cannot start after a clean install | Strict configuration validation and clear errors | A cross-platform pairing UI remains future work; current setup is performed from the ADB host |
+| Low | Pairing file is copied through an untrusted channel or left in shared storage | Another LAN user can authenticate to the modem | Strict versioned format, 16 KiB input limit, host/token validation, private local config permissions, and delete-after-import guidance | The portable file contains the access key in plaintext; transfer it privately and rotate the gateway token if it is exposed |
 | Low | App-store review rejects dependent functionality | Mobile distribution delay | Ordinary tablet app is separated from privileged modem components and store declarations exist | Reviewers still need hardware-access instructions; iOS/iPadOS/macOS implementations do not yet exist |
 
 ## Implemented protection mechanisms
@@ -64,6 +64,8 @@ mandatory.
 - Privileged installer gates at both high-level and low-level entry points.
 - Local signing-key permission and certificate fingerprint enforcement.
 - Atomic private configuration/history writes and strict file modes.
+- Auto-detecting guided setup plus bounded, validated Linux/Windows pairing-file import;
+  pairing files are ignored and rejected by repository guards.
 - Hardened optional systemd service with rate limits and Telegram disabled by default.
 - Commit-pinned CI actions, pinned Python tooling, legacy Android source compilation,
   repository guards, signed-tag enforcement, and release checksums.

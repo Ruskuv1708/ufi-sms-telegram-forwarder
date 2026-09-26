@@ -56,12 +56,14 @@ done
 if [[ -f "$script_dir/usr/share/applications/ufi-phone.desktop" ]]; then
     desktop_file="$script_dir/usr/share/applications/ufi-phone.desktop"
     icon_file="$script_dir/usr/share/icons/hicolor/512x512/apps/ufi-phone.png"
+    mime_file="$script_dir/usr/share/mime/packages/ufi-phone-pairing.xml"
     metainfo_file="$script_dir/usr/share/metainfo/io.github.ruskuv1708.ufiphone.metainfo.xml"
     uninstaller_file="$script_dir/uninstall.sh"
     binary="${binary:-$script_dir/usr/bin/UFI-Phone}"
 else
     desktop_file="$project_dir/desktop/linux/ufi-phone.desktop"
     icon_file="$project_dir/assets/ufi-phone.png"
+    mime_file="$project_dir/desktop/linux/ufi-phone-pairing.xml"
     metainfo_file="$project_dir/desktop/linux/io.github.ruskuv1708.ufiphone.metainfo.xml"
     uninstaller_file="$project_dir/desktop/uninstall-linux.sh"
     binary="${binary:-$project_dir/dist/UFI-Phone}"
@@ -94,6 +96,10 @@ fi
 install -Dm755 "$binary" "$HOME/.local/bin/UFI-Phone"
 install -Dm644 "$icon_file" \
     "$HOME/.local/share/icons/hicolor/512x512/apps/ufi-phone.png"
+if [[ -f "$mime_file" ]]; then
+    install -Dm644 "$mime_file" \
+        "$HOME/.local/share/mime/packages/ufi-phone-pairing.xml"
+fi
 
 # Use an absolute executable path so launchers work immediately even when a
 # desktop session has not added ~/.local/bin to PATH yet.
@@ -109,7 +115,7 @@ cleanup_rendered_desktop() {
 trap cleanup_rendered_desktop EXIT HUP INT TERM
 while IFS= read -r desktop_line || [[ -n "$desktop_line" ]]; do
     case "$desktop_line" in
-        Exec=*) printf 'Exec="%s"\n' "$quoted_desktop_exec" ;;
+        Exec=*) printf 'Exec="%s" %%f\n' "$quoted_desktop_exec" ;;
         TryExec=*) printf 'TryExec=%s\n' "$desktop_exec" ;;
         *) printf '%s\n' "$desktop_line" ;;
     esac
@@ -151,6 +157,9 @@ if command -v update-desktop-database >/dev/null 2>&1; then
 fi
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
     gtk-update-icon-cache -q -t "$HOME/.local/share/icons/hicolor" || true
+fi
+if command -v update-mime-database >/dev/null 2>&1; then
+    update-mime-database "$HOME/.local/share/mime" || true
 fi
 
 echo "UFI Phone was installed for the current user."

@@ -26,6 +26,7 @@ local.properties
 telegram.json
 inbox.jsonl
 telegram-sent.txt
+*.ufi-phone
 
 # Local diagnostic output
 aved

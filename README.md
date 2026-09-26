@@ -35,25 +35,37 @@ independent compatibility path.
 - Detects and repairs the firmware's LTE-only reset after a cold boot, and
   displays a persistent recovery count in the tablet UI.
 
+## Experience
+
+| Calls | Messages | Guided first run |
+| --- | --- | --- |
+| ![UFI Phone Calls](presentations/assets/ufi-app-calls.png) | ![UFI Phone Messages](presentations/assets/ufi-app-messages.png) | ![UFI Phone guided setup](presentations/assets/ufi-app-setup.png) |
+
 ## Quick start
 
-Start with the read-only device doctor. It reports only a small whitelist of
-non-secret hardware properties and never prints pairing tokens, SMS, IMSI, or
-call contents:
+On a Linux setup computer, connect the modem and optionally one Android tablet
+by USB. Start with the read-only device doctor. It reports only a small
+whitelist of non-secret hardware properties and never prints pairing tokens,
+SMS, IMSI, or call contents:
 
 ```bash
 ./ufi_setup.py doctor
 ```
 
-For the exact tested hardware profile, one command can build the three Android
-components, safely install the privileged modem services, pair the tablet, and
-leave Telegram disabled:
+For the exact tested hardware profile, the guided path automatically identifies
+the modem and a single connected Android 8+ tablet, shows its plan, builds and
+installs the components, pairs them, verifies the gateway, and leaves Telegram
+disabled:
 
 ```bash
-./ufi_setup.py install \
-  --modem-serial MODEM_ADB_SERIAL \
-  --tablet-serial TABLET_ADB_SERIAL
+./setup.sh
 ```
+
+Use `./setup.sh --desktop-only` when no tablet is needed, or
+`./setup.sh --dry-run` to preview the selection without making changes. Serial
+numbers are required only when more than one possible device is connected.
+The complete first-run and additional-computer paths are in
+[the setup guide](docs/setup.md).
 
 The installer refuses unverified look-alike hardware. Cheap “UFI” devices can
 use the same enclosure while containing unrelated chipsets, Android builds,
@@ -86,6 +98,7 @@ presentations/           Final TUIT decks, sources, assets, and validation
 release-artifacts/       Locally downloaded CI packages (ignored by Git)
 tests/                   Local voice-client integration fixture
 ufi_setup.py              Read-only doctor and guarded one-command installer
+setup.sh                  Recommended auto-detecting setup entry point
 ufi_sms.py               Linux USB/AT SMS receiver and fallback forwarder
 ufi_voice.py             Linux voice setup, CLI, and desktop window
 ufi-sms.service          Optional systemd user service for SMS fallback
@@ -124,7 +137,7 @@ public repository.
 - Platform signing keys matching the modem's firmware certificate
 - An Android 8+ tablet connected to the modem's `192.168.100.0/24` LAN
 
-### Build and pair
+### Build and pair manually
 
 ```bash
 ./android-network-guard/build.sh
@@ -135,7 +148,8 @@ public repository.
 ./ufi_voice.py setup-tablet --tablet-serial TABLET_ADB_SERIAL
 ```
 
-`setup` generates a random 256-bit LAN token and stores it in
+The recommended `./setup.sh` performs these steps automatically. The lower-level
+`setup` command generates a random 256-bit LAN token and stores it in
 `~/.config/ufi-voice-gateway/client.json` with user-only permissions. The
 token is transferred through ADB-only configuration components and is never
 embedded in source code or an APK. Tablet setup also grants microphone and
@@ -156,7 +170,7 @@ can apply to outgoing calls and SMS.
 
 ### Google Play build
 
-The tablet companion has a standard Gradle 9.6 / Android Gradle Plugin 9.4.1
+The tablet companion has a standard Gradle 9.7.1 / Android Gradle Plugin 9.4.1
 build that targets API 36 and produces an Android App Bundle:
 
 ```bash
@@ -306,6 +320,17 @@ packaged as a portable Windows executable:
 
 ```bash
 python3 desktop/ufi_phone_desktop.py
+```
+
+Tagged builds also publish a standard `UFI-Phone-Setup.exe` installer.
+
+On a clean computer the app opens a guided Connection screen instead of
+failing. Import a private `.ufi-phone` pairing file there; installed Linux and
+Windows packages also open that file type directly. Create the file on an
+already paired setup computer with:
+
+```bash
+./ufi_setup.py pairing --output ~/Downloads/my-modem.ufi-phone
 ```
 
 Linux call audio uses PipeWire/PulseAudio `parec` and `paplay`. Windows release

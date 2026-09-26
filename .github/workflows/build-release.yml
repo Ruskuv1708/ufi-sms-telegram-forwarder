@@ -128,6 +128,15 @@ jobs:
           executable = pathlib.Path('dist/UFI-Phone.exe' if os.name == 'nt' else 'dist/UFI-Phone');
           environment = dict(os.environ, UFI_PHONE_PACKAGE_SELF_TEST='1');
           subprocess.run([str(executable)], env=environment, check=True)"
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $compiler)) {
+            throw "Inno Setup compiler not found: $compiler"
+          }
+          & $compiler 'desktop\windows\UFI-Phone.iss'
       - name: Build Linux install packages
         if: runner.os == 'Linux'
         run: desktop/linux/build-packages.sh --binary dist/UFI-Phone --output dist --min-glibc 2.35

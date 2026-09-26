@@ -6,16 +6,18 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 from typing import Any
-
 
 PROJECT_DIR = Path(__file__).resolve().parent
 PROFILES_PATH = PROJECT_DIR / "hardware-profiles.json"
+PAIRING_KIND = "ufi-phone-pairing"
+PAIRING_VERSION = 1
 SAFE_PROPERTIES = {
     "productDevice": "ro.product.device",
     "productModel": "ro.product.model",
@@ -182,6 +184,12 @@ def build_readiness() -> dict[str, bool]:
             Path.home() / ".cache" / "ufi-sms-android" / "toolchain",
         )
     )
+    java_home = Path(os.environ.get("JAVA_HOME", toolchain / "jdk"))
+    sdk_root = Path(
+        os.environ.get("ANDROID_SDK_ROOT")
+        or os.environ.get("ANDROID_HOME")
+        or toolchain / "sdk"
+    )
     platform_keys = Path(
         os.environ.get(
             "UFI_PLATFORM_KEY_DIR",
@@ -218,18 +226,18 @@ def build_readiness() -> dict[str, bool]:
         key_is_private = (platform_key.stat().st_mode & 0o077) == 0
     return {
         "adb": bool(shutil.which("adb")),
-        "jdk": (toolchain / "jdk" / "bin" / "javac").exists(),
+        "jdk": (java_home / "bin" / "javac").exists(),
         "androidPlatform19": (
-            toolchain / "sdk" / "platforms" / "android-19" / "android.jar"
+            sdk_root / "platforms" / "android-19" / "android.jar"
         ).exists(),
         "androidPlatform36": (
-            toolchain / "sdk" / "platforms" / "android-36" / "android.jar"
+            sdk_root / "platforms" / "android-36" / "android.jar"
         ).exists(),
         "buildTools35": (
-            toolchain / "sdk" / "build-tools" / "35.0.0" / "aapt"
+            sdk_root / "build-tools" / "35.0.0" / "aapt"
         ).exists(),
         "buildTools36": (
-            toolchain / "sdk" / "build-tools" / "36.0.0" / "aapt"
+            sdk_root / "build-tools" / "36.0.0" / "aapt"
         ).exists(),
         "testedPlatformKey": (
             key_is_private
@@ -281,6 +289,23 @@ def print_report(report: dict[str, Any]) -> None:
     for name, present in readiness.items():
         print(f"  {'OK' if present else '--'} {name}")
 
+    supported = [device for device in devices if device.get("support") == "tested"]
+    tablets = [
+        device
+        for device in devices
+        if device.get("support") != "tested" and int(device.get("androidSdk") or 0) >= 26
+    ]
+    print("\nNext step")
+    if len(supported) == 1:
+        suffix = " with the connected tablet" if len(tablets) == 1 else ""
+        print(f"  Run ./setup.sh to install UFI Phone{suffix}.")
+    elif not devices:
+        print("  Connect the modem by USB, enable ADB, then run ./setup.sh again.")
+    elif not supported:
+        print("  No exact tested modem profile was found; installation remains locked.")
+    else:
+        print("  More than one supported modem is connected; choose one with --modem-serial.")
+
 
 def run_script(path: Path, *arguments: str) -> None:
     result = subprocess.run([str(path), *arguments], cwd=PROJECT_DIR, check=False)
@@ -298,25 +323,244 @@ def build_all() -> None:
         run_script(PROJECT_DIR / relative)
 
 
-def install(modem_serial: str, tablet_serial: str | None, skip_build: bool) -> None:
-    report = full_report(modem_serial)
-    modem = report["devices"][0]
-    if modem["support"] != "tested":
+def device_label(device: dict[str, Any]) -> str:
+    model = str(device.get("productModel") or "Unknown Android device")
+    release = str(device.get("androidRelease") or "?")
+    return f"{model} · Android {release} · {device['serial']}"
+
+
+def select_install_targets(
+    devices: list[dict[str, Any]],
+    *,
+    modem_serial: str | None = None,
+    tablet_serial: str | None = None,
+    desktop_only: bool = False,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Resolve one exact modem and at most one compatible Android client."""
+    by_serial = {str(device.get("serial", "")): device for device in devices}
+    if modem_serial:
+        modem = by_serial.get(modem_serial)
+        if modem is None:
+            raise SetupError(f"ADB device not found: {modem_serial}")
+        if modem.get("support") != "tested":
+            raise SetupError(
+                "Refusing privileged installation on unverified hardware. Run doctor --json "
+                "and add a reviewed hardware profile with the correct platform signing key."
+            )
+    else:
+        modem_candidates = [
+            device for device in devices if device.get("support") == "tested"
+        ]
+        if not modem_candidates:
+            raise SetupError(
+                "No exact tested UFI modem was detected. Connect it over USB, authorize ADB, "
+                "and run ./ufi_setup.py doctor."
+            )
+        if len(modem_candidates) > 1:
+            serials = ", ".join(str(device["serial"]) for device in modem_candidates)
+            raise SetupError(
+                f"More than one supported modem is connected ({serials}); "
+                "choose one with --modem-serial."
+            )
+        modem = modem_candidates[0]
+
+    if desktop_only:
+        if tablet_serial:
+            raise SetupError("--tablet-serial cannot be combined with --desktop-only")
+        return modem, None
+
+    profile = next(
+        (profile for profile in load_profiles() if profile["id"] == modem.get("profile")),
+        None,
+    )
+    if profile is None:
+        raise SetupError("The selected modem profile is no longer available")
+    minimum_sdk = int(profile.get("installation", {}).get("tabletMinSdk", 26))
+    if tablet_serial:
+        tablet = by_serial.get(tablet_serial)
+        if tablet is None:
+            raise SetupError(f"ADB device not found: {tablet_serial}")
+        if tablet is modem:
+            raise SetupError("The modem cannot also be selected as the tablet")
+        if int(tablet.get("androidSdk") or 0) < minimum_sdk:
+            raise SetupError(f"The tablet must run Android API {minimum_sdk} or newer")
+        return modem, tablet
+
+    tablet_candidates = [
+        device
+        for device in devices
+        if device is not modem and int(device.get("androidSdk") or 0) >= minimum_sdk
+    ]
+    if len(tablet_candidates) > 1:
+        serials = ", ".join(str(device["serial"]) for device in tablet_candidates)
         raise SetupError(
-            "Refusing privileged installation on unverified hardware. Run doctor --json "
-            "and add a reviewed hardware profile with the correct platform signing key."
+            f"More than one Android tablet is connected ({serials}); choose one with "
+            "--tablet-serial or use --desktop-only."
+        )
+    return modem, tablet_candidates[0] if tablet_candidates else None
+
+
+def write_pairing_file(
+    destination: Path,
+    config: dict[str, Any],
+    *,
+    overwrite: bool = False,
+) -> Path:
+    """Write a portable pairing document without exposing its secret on stdout."""
+    from ufi_voice import validate_config
+
+    validate_config(config)
+    destination = destination.expanduser().resolve()
+    if destination.exists() and not overwrite:
+        raise SetupError(f"Pairing file already exists: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    document = {
+        "kind": PAIRING_KIND,
+        "version": PAIRING_VERSION,
+        "host": str(config["host"]),
+        "token": str(config["token"]),
+    }
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        temporary.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+        if os.name != "nt":
+            temporary.chmod(0o600)
+        os.replace(temporary, destination)
+        if os.name != "nt":
+            destination.chmod(0o600)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+    return destination
+
+
+def export_pairing(destination: Path, *, overwrite: bool = False) -> Path:
+    from ufi_voice import load_config
+
+    return write_pairing_file(destination, load_config(), overwrite=overwrite)
+
+
+def print_setup_plan(
+    modem: dict[str, Any], tablet: dict[str, Any] | None, *, skip_build: bool
+) -> None:
+    print("UFI Phone guided setup")
+    print("======================")
+    print(f"Modem:  {device_label(modem)}")
+    print(f"Tablet: {device_label(tablet) if tablet else 'not selected (desktop only)'}")
+    print("\nPlan")
+    step = 1
+    if not skip_build:
+        print(f"  {step}. Build the signed modem services and Android companion")
+        step += 1
+    print(f"  {step}. Install and pair the guarded modem gateway")
+    step += 1
+    if tablet:
+        print(f"  {step}. Install, pair, and open UFI Phone on the tablet")
+        step += 1
+    print(f"  {step}. Verify the private-LAN connection")
+
+
+def install(
+    modem_serial: str | None,
+    tablet_serial: str | None,
+    skip_build: bool,
+    *,
+    desktop_only: bool = False,
+    dry_run: bool = False,
+    pairing_file: Path | None = None,
+    force: bool = False,
+) -> None:
+    report = full_report()
+    modem, tablet = select_install_targets(
+        report["devices"],
+        modem_serial=modem_serial,
+        tablet_serial=tablet_serial,
+        desktop_only=desktop_only,
+    )
+    print_setup_plan(modem, tablet, skip_build=skip_build)
+    missing = [
+        name for name, present in report["buildReadiness"].items() if not present
+    ]
+    if not skip_build and missing:
+        print("\nMissing build prerequisites: " + ", ".join(missing))
+    if dry_run:
+        print("\nDry run complete; no files or devices were changed.")
+        return
+    if pairing_file and pairing_file.expanduser().resolve().exists() and not force:
+        raise SetupError(f"Pairing file already exists: {pairing_file.expanduser().resolve()}")
+    if not skip_build and missing:
+        raise SetupError(
+            "Build environment is incomplete. Run ./ufi_setup.py doctor, repair the "
+            "listed prerequisites, or use --skip-build only with APKs you built earlier."
         )
     if not skip_build:
         build_all()
-    run_script(PROJECT_DIR / "ufi_voice.py", "setup", "--modem-serial", modem_serial)
-    if tablet_serial:
+    run_script(
+        PROJECT_DIR / "ufi_voice.py",
+        "setup",
+        "--modem-serial",
+        str(modem["serial"]),
+    )
+    if tablet:
         run_script(
             PROJECT_DIR / "ufi_voice.py",
             "setup-tablet",
             "--tablet-serial",
-            tablet_serial,
+            str(tablet["serial"]),
         )
-    print("Installation complete. No cloud or Telegram connection was enabled.")
+    if pairing_file:
+        exported = export_pairing(pairing_file, overwrite=force)
+        print(f"Pairing file: {exported}")
+        print("Keep it private, import it on the other computer, then delete the transferred copy.")
+    print("\nSetup complete")
+    print("  Desktop: open UFI Phone on this computer; pairing is already saved.")
+    if tablet:
+        print("  Tablet: UFI Phone is installed, paired, and open.")
+    else:
+        print("  Tablet: connect one by USB later and rerun ./setup.sh --tablet-serial SERIAL.")
+    print("  Privacy: calls and SMS stay on the modem LAN; Telegram remains disabled.")
+
+
+def add_setup_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--modem-serial",
+        help="choose a modem only when more than one supported modem is connected",
+    )
+    parser.add_argument(
+        "--tablet-serial",
+        help="choose a tablet only when more than one Android client is connected",
+    )
+    parser.add_argument(
+        "--desktop-only",
+        action="store_true",
+        help="provision the modem and this desktop without installing a tablet app",
+    )
+    parser.add_argument(
+        "--skip-build",
+        action="store_true",
+        help="reuse the APKs already present in the project build directories",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="show selected devices and planned actions without changing anything",
+    )
+    parser.add_argument(
+        "--pairing-file",
+        type=Path,
+        help="also export a private .ufi-phone file for another desktop",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="replace an existing --pairing-file destination",
+    )
 
 
 def main() -> int:
@@ -327,10 +571,19 @@ def main() -> int:
     doctor.add_argument("--json", action="store_true")
     subparsers.add_parser("profiles", help="show supported hardware profiles")
     subparsers.add_parser("build", help="build the modem and Android clients")
-    installer = subparsers.add_parser("install", help="install on an exact tested profile")
-    installer.add_argument("--modem-serial", required=True)
-    installer.add_argument("--tablet-serial")
-    installer.add_argument("--skip-build", action="store_true")
+    setup = subparsers.add_parser(
+        "setup", help="auto-detect, install, pair, and verify supported devices"
+    )
+    add_setup_arguments(setup)
+    installer = subparsers.add_parser(
+        "install", help="legacy alias for the guarded guided setup"
+    )
+    add_setup_arguments(installer)
+    pairing = subparsers.add_parser(
+        "pairing", help="export a private pairing file for another desktop"
+    )
+    pairing.add_argument("--output", type=Path, required=True)
+    pairing.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
     if args.command == "doctor":
@@ -343,8 +596,20 @@ def main() -> int:
         print(json.dumps(load_profiles(), indent=2, ensure_ascii=False))
     elif args.command == "build":
         build_all()
-    elif args.command == "install":
-        install(args.modem_serial, args.tablet_serial, args.skip_build)
+    elif args.command in ("setup", "install"):
+        install(
+            args.modem_serial,
+            args.tablet_serial,
+            args.skip_build,
+            desktop_only=args.desktop_only,
+            dry_run=args.dry_run,
+            pairing_file=args.pairing_file,
+            force=args.force,
+        )
+    elif args.command == "pairing":
+        exported = export_pairing(args.output, overwrite=args.force)
+        print(f"Pairing file created: {exported}")
+        print("Keep it private and delete the transferred copy after importing it.")
     return 0
 
 

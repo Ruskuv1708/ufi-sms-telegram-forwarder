@@ -188,7 +188,7 @@ public final class VoiceMonitorService extends Service {
             return;
         }
         if (!ClientConfig.enabled(this)) {
-            updateStatus("NOT_PAIRED", "", "", "Run tablet setup from the computer");
+            updateStatus("NOT_PAIRED", "", "", "Connect by USB once and run ./setup.sh");
             return;
         }
         try {

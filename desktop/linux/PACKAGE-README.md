@@ -15,6 +15,11 @@ chmod +x UFI-Phone-VERSION-linux-ARCH.run
 The installer adds UFI Phone to the current user's application menu and asks
 whether to create a launch icon on the desktop. It does not require root.
 
+On first launch, import the private `.ufi-phone` file exported by the computer
+that provisioned the modem. This package registers that file type, so it can
+also be opened directly from the file manager. Delete transferred pairing
+files after import.
+
 For unattended installation, pass `--desktop-shortcut` or
 `--no-desktop-shortcut`. To remove the user installation later, run
 `~/.local/share/ufi-phone/uninstall.sh`.

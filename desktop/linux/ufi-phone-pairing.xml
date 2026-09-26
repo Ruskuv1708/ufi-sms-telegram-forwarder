@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-ufi-phone-pairing">
+    <comment>UFI Phone pairing file</comment>
+    <glob pattern="*.ufi-phone" />
+  </mime-type>
+</mime-info>

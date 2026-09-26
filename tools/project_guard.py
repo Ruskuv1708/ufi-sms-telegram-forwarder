@@ -24,7 +24,7 @@ SENSITIVE_FILENAMES = {
     "id_rsa",
     "telegram.json",
 }
-SENSITIVE_SUFFIXES = {".jks", ".keystore", ".p12", ".pfx", ".pk8"}
+SENSITIVE_SUFFIXES = {".jks", ".keystore", ".p12", ".pfx", ".pk8", ".ufi-phone"}
 
 
 class GuardError(RuntimeError):

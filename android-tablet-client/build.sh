@@ -4,7 +4,7 @@ set -euo pipefail
 project_dir="$(cd "$(dirname "$0")" && pwd)"
 toolchain_dir="${UFI_ANDROID_TOOLCHAIN:-$HOME/.cache/ufi-sms-android/toolchain}"
 java_home="${JAVA_HOME:-$toolchain_dir/jdk}"
-sdk_root="${ANDROID_SDK_ROOT:-$toolchain_dir/sdk}"
+sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$toolchain_dir/sdk}}"
 build_tools="$sdk_root/build-tools/${UFI_BUILD_TOOLS_VERSION:-36.0.0}"
 tablet_platform_version="${UFI_TABLET_PLATFORM_VERSION:-36}"
 platform_jar="$sdk_root/platforms/android-$tablet_platform_version/android.jar"

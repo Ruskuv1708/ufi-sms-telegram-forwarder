@@ -77,4 +77,89 @@ A separate crop was not needed because the combined 1736 × 1340 image preserves
 
 - Contact-name resolution could replace raw numbers when a future contacts source is added; this is outside the current modem-only scope.
 
+## Desktop simplification pass — 2026-09-26
+
+### Evidence
+
+- Source visual truth: the previous shipped desktop captures at Git commit
+  `44b5e46`, paths `presentations/assets/ufi-app-calls.png` and
+  `presentations/assets/ufi-app-messages.png`.
+- Rendered implementation: `presentations/assets/ufi-app-calls.png`,
+  `presentations/assets/ufi-app-messages.png`, and the new first-run state at
+  `presentations/assets/ufi-app-setup.png`.
+- Same-state combined comparisons:
+  `/tmp/ufi-phone-desktop-calls-comparison-final.png` and
+  `/tmp/ufi-phone-desktop-messages-comparison-final.png`.
+- Responsive evidence: `/tmp/ufi-phone-setup-minimum-final.png`,
+  `/tmp/ufi-phone-setup-paired-minimum-final.png`, and
+  `/tmp/ufi-phone-messages-minimum.png`.
+- Viewports: 900 × 600 for the primary comparison and 820 × 580 for the
+  minimum-window check. Source and implementation captures are both 1× native
+  pixels with no density normalization or browser/CSS scaling.
+- State: light theme, paired/idle modem for Calls and Messages; unpaired clean
+  install for Connection.
+
+### Findings
+
+- No actionable P0, P1, or P2 difference remains. The redesign intentionally
+  replaces platform-default gray controls with the existing Google-inspired
+  blue, mint, navy, and pale-surface design language while preserving every
+  primary action from the source.
+- [P3] Native Tk widgets remain more rectangular than the Android Material
+  client. This is an accepted platform constraint; the hierarchy, color,
+  padding, selected state, and control weight now carry the shared language
+  without imitating rounded mobile controls poorly.
+
+### Required fidelity surfaces
+
+- Fonts and typography: Segoe UI with the operating-system sans-serif fallback
+  preserves a clear display/section/body hierarchy. Both comparison images
+  show stronger title weight, quieter helper copy, and no truncated primary
+  labels.
+- Spacing and layout rhythm: the 184-pixel navigation rail, 28-pixel content
+  inset, status card, and section gaps create consistent grouping. Calls,
+  Messages, and Connection remain usable at 820 × 580.
+- Colors and visual tokens: the implementation consistently uses navy text,
+  Google-style blue selection/actions, mint readiness, amber repair, red
+  offline/setup, and pale blue-gray surfaces with readable contrast.
+- Image quality and asset fidelity: the only branded image is the existing
+  512-pixel UFI Phone icon, downsampled cleanly for the header. No placeholder
+  image, emoji icon, CSS art, or generated decoration was introduced.
+- Copy and content: setup now uses short task language—Connect, Run one command,
+  Use anywhere—and tells users when a pairing file is private. Healthy states
+  are concise; detailed recovery information remains available in Connection.
+- States and accessibility: selected, disabled, ready, repair, offline, and
+  unpaired states are visually distinct. Controls remain native keyboard-
+  reachable widgets with focus behavior and text labels.
+
+### Full-view and focused comparison
+
+The side-by-side Calls comparison shows the same navigation, readiness,
+call-control, and history structure at the same size, with clearer grouping
+and less visual noise. The Messages comparison confirms a wider conversation
+rail and distinct incoming/outgoing message surfaces. Text and control details
+remain readable in the full 1800 × 600 comparisons, so no additional crop was
+needed.
+
+### Comparison history
+
+1. First minimum-window capture showed setup instructions truncating at
+   820 × 580, a P2 responsive issue.
+2. The copy was shortened, wrap widths were constrained to the available
+   content column, and vertical gaps were reduced.
+3. `/tmp/ufi-phone-setup-minimum-final.png` shows all three setup steps and
+   their explanations without clipping; the P2 is closed.
+4. The denser paired Connection state was also checked at 820 × 580 after the
+   final spacing pass. `/tmp/ufi-phone-setup-paired-minimum-final.png` keeps
+   all import, export, open-phone, and setup guidance visible.
+
+### Implementation checklist
+
+- [x] Preserve Calls, Keypad, and Messages as the stable navigation model.
+- [x] Add a complete unpaired first-run state instead of an error dialog.
+- [x] Keep modem readiness visible but quiet when healthy.
+- [x] Make incoming and outgoing messages scannable as separate surfaces.
+- [x] Verify primary and minimum desktop window sizes.
+- [x] Keep the Android design language and desktop platform conventions aligned.
+
 final result: passed

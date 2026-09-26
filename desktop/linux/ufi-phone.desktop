@@ -3,10 +3,11 @@
 Type=Application
 Name=UFI Phone
 Comment=Calls and SMS through a compatible UFI modem
-Exec=UFI-Phone
+Exec=UFI-Phone %f
 TryExec=UFI-Phone
 Icon=ufi-phone
 Terminal=false
 Categories=Network;Telephony;
 Keywords=modem;phone;sms;call;
+MimeType=application/x-ufi-phone-pairing;
 StartupNotify=true

@@ -30,5 +30,11 @@ Name: "{autodesktop}\UFI Phone"; Filename: "{app}\{#MyAppExeName}"; Tasks: deskt
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
 
+[Registry]
+Root: HKA; Subkey: "Software\Classes\.ufi-phone"; ValueType: string; ValueName: ""; ValueData: "UFIPhone.Pairing"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\UFIPhone.Pairing"; ValueType: string; ValueName: ""; ValueData: "UFI Phone pairing file"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\UFIPhone.Pairing\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKA; Subkey: "Software\Classes\UFIPhone.Pairing\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch UFI Phone"; Flags: nowait postinstall skipifsilent
