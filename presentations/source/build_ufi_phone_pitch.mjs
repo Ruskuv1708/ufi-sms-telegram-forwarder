@@ -14,11 +14,13 @@ const RUNTIME_NODE_MODULES = process.env.RUNTIME_NODE_MODULES
   ?? "/home/Hollow/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules";
 const artifactToolPath = path.join(RUNTIME_NODE_MODULES, "@oai/artifact-tool/dist/artifact_tool.mjs");
 const { Presentation, PresentationFile } = await import(pathToFileURL(artifactToolPath).href);
-const buildDir = path.join(workspaceDir, "presentations/workbench/ufi-v050");
+const buildDir = path.join(workspaceDir, "presentations/workbench/ufi-v050-screenshots");
 const outputDir = path.join(workspaceDir, "presentations/final");
 const validationDir = path.join(workspaceDir, "presentations/validation");
 const coverPath = path.join(workspaceDir, "presentations/assets/ufi-phone-cover.png");
 const usersPath = path.join(workspaceDir, "presentations/assets/ufi-phone-users.png");
+const callsScreenshotPath = path.join(workspaceDir, "presentations/assets/ufi-app-calls.png");
+const messagesScreenshotPath = path.join(workspaceDir, "presentations/assets/ufi-app-messages.png");
 const iconPath = path.join(repoDir, "assets/ufi-phone.png");
 const referencePath = path.join(workspaceDir, "presentations/reference/CellBridge_TUIT_Startup_Pitch_EN.pptx");
 
@@ -33,6 +35,8 @@ const { resolvePresentationFont, applyPresentationChartFont, finalizePresentatio
 const FONT = resolvePresentationFont({ fontFamily: "Noto Sans" });
 const coverBytes = await fs.readFile(coverPath);
 const usersBytes = await fs.readFile(usersPath);
+const callsScreenshotBytes = await fs.readFile(callsScreenshotPath);
+const messagesScreenshotBytes = await fs.readFile(messagesScreenshotPath);
 const iconBytes = await fs.readFile(iconPath);
 const referenceBytes = await fs.readFile(referencePath);
 const referenceSha256 = createHash("sha256").update(referenceBytes).digest("hex");
@@ -56,19 +60,21 @@ const C = {
   paleRed: "#FDEEEE",
 };
 
-const COMMIT = "116de4779f0a3eed155390c43de84b1bb24f3df5";
+const CURRENT_COMMIT = "3cd8b565191dec47d1df9f079d8dd2b0ecd5529b";
+const BUILD_COMMIT = "116de4779f0a3eed155390c43de84b1bb24f3df5";
 const GH = "https://github.com/Ruskuv1708/ufi-sms-telegram-forwarder";
 const SOURCES = {
-  repo: `${GH}/tree/${COMMIT}`,
-  commit: `${GH}/commit/${COMMIT}`,
+  repo: `${GH}/tree/${CURRENT_COMMIT}`,
+  currentCommit: `${GH}/commit/${CURRENT_COMMIT}`,
+  buildCommit: `${GH}/commit/${BUILD_COMMIT}`,
   actions: `${GH}/actions/runs/35964803887`,
-  readme: `${GH}/blob/${COMMIT}/README.md`,
-  productVision: `${GH}/blob/${COMMIT}/docs/product-vision.md`,
-  operatorReport: `${GH}/blob/${COMMIT}/docs/uzbekistan-market-and-operator-compatibility.md`,
-  appleRoadmap: `${GH}/blob/${COMMIT}/docs/apple-platform-roadmap.md`,
-  hardwareProfiles: `${GH}/blob/${COMMIT}/hardware-profiles.json`,
-  profileGuide: `${GH}/blob/${COMMIT}/docs/adding-hardware-profiles.md`,
-  playChecklist: `${GH}/blob/${COMMIT}/distribution/google-play/release-checklist.md`,
+  readme: `${GH}/blob/${CURRENT_COMMIT}/README.md`,
+  productVision: `${GH}/blob/${CURRENT_COMMIT}/docs/product-vision.md`,
+  operatorReport: `${GH}/blob/${CURRENT_COMMIT}/docs/uzbekistan-market-and-operator-compatibility.md`,
+  appleRoadmap: `${GH}/blob/${CURRENT_COMMIT}/docs/apple-platform-roadmap.md`,
+  hardwareProfiles: `${GH}/blob/${CURRENT_COMMIT}/hardware-profiles.json`,
+  profileGuide: `${GH}/blob/${CURRENT_COMMIT}/docs/adding-hardware-profiles.md`,
+  playChecklist: `${GH}/blob/${CURRENT_COMMIT}/distribution/google-play/release-checklist.md`,
   applePrice: "https://www.apple.com/shop/buy-ipad/ipad",
   ringcentral: "https://www.ringcentral.com/shared/content/plans-and-pricing.html",
   uzStats: "https://stat.uz/files/538/2025-Choraklik-natijalar-january--march-ang/3940/Report-for-January-March-2025.pdf",
@@ -160,8 +166,8 @@ function addHeader(slide, title, number, dark = false, subtitle = "") {
 function addFooter(slide, number, dark = false, lang = "EN") {
   const muted = dark ? "#8CA2AD" : "#778C96";
   const footerText = lang === "RU"
-    ? "Стартап-питч TUIT  •  24 сентября 2026"
-    : "TUIT startup pitch  •  24 Sep 2026";
+    ? "Стартап-питч TUIT, 24 сентября 2026"
+    : "TUIT startup pitch, 24 Sep 2026";
   addText(slide, footerText, 64, 684, 360, 18, { fontSize: 12, color: muted });
   addText(slide, String(number).padStart(2, "0"), 1180, 684, 36, 18, {
     fontSize: 12,
@@ -186,21 +192,21 @@ const en = {
   coverLine1: "Tested UFI003 profile with Ucell",
   coverLine2: "Android, Linux and Windows release artifacts",
   coverMeta: "TUIT startup pitch  /  24 September 2026",
-  s2Title: "Product proof in v0.5.0",
-  s2Subtitle: "The local gateway now covers the everyday calling and messaging loop",
-  s2CallsLabel: "CALLS",
+  s2Title: "UFI Phone, running today",
+  s2Subtitle: "Real desktop-client captures: calls and SMS stay on the modem's local network",
+  s2CallsLabel: "CALLS & HISTORY",
   s2CallsBig: "2-way",
-  s2CallsText: "Incoming and outgoing ordinary carrier calls with answer, hang up and duplex audio.",
+  s2CallsText: "Answer, hang up, connect two-way audio and retain the latest 100 calls.",
   s2CallsNote: "Incoming-call UI and local call history are complete.",
-  s2SmsLabel: "MESSAGES",
+  s2SmsLabel: "DIRECT SMS",
   s2SmsBig: "Local",
-  s2SmsText: "Receive, read and send SMS directly over the modem's private LAN.",
+  s2SmsText: "Read and send messages directly over the authenticated private LAN.",
   s2SmsNote: "Telegram is optional and disabled by default.",
-  s2Bottom: "Network-mode health and automatic recovery keep incoming-call fallback ready after reboot.",
-  s3Title: "Evidence-based product architecture",
+  s2Bottom: "Captured from the Linux desktop client with synthetic demo data; no customer information is shown.",
+  s3Title: "Product architecture and technical limits",
   s3Subtitle: "The tested UFI003 owns the SIM, radio state, carrier call and SMS store",
   s3Network: "Mobile\nnetwork",
-  s3Modem: "Tested UFI003\nSIM • radio • gateway",
+  s3Modem: "Tested UFI003\nSIM, radio and gateway",
   s3Lan: "Authenticated\nprivate LAN",
   s3Android: "Android",
   s3Linux: "Linux",
@@ -210,11 +216,11 @@ const en = {
   s3Scope: "Scope: non-emergency ordinary calls only, one active call and one audio client.",
   s3Guard: "The guarded installer accepts the exact tested UFI003 profile. Look-alike hardware is refused.",
   s4Title: "Release packaging and platform status",
-  s4Subtitle: "Commit 116de47 produced three artifacts in a successful GitHub Actions run",
+  s4Subtitle: "Artifacts verified at 116de47, with the product and deck workspace current at 3cd8b56",
   s4Headers: ["Platform", "What ships", "Built evidence", "Remaining gate"],
   s4Rows: [
-    ["Android", "UFI Phone v0.5.0 with responsive Calls, Keypad and Messages UI; landscape keypad fixed", "API 36 AAB built", "Publisher account, upload signing, Play forms and closed test if applicable"],
-    ["Linux", "Desktop calls, SMS, local history and two-way audio", "x86_64 executable built", "Installer and support QA on target distributions"],
+    ["Android", "UFI Phone v0.5.0 with responsive Calls, Keypad and Messages UI. Landscape keypad fixed", "API 36 AAB built", "Publisher account, upload signing, Play forms and closed test if applicable"],
+    ["Linux", "Desktop calls, SMS, local history, two-way audio and an application menu launcher", "x86_64 executable built", "Support QA on target Linux distributions"],
     ["Windows", "Portable desktop app with calls, SMS, history and PortAudio support", "x86_64 executable built", "Installer signing and support QA"],
     ["UFI003 gateway", "Device doctor, guarded installer, calls, SMS, audio and radio recovery", "Exact profile tested", "Near-match hardware remains refused"],
   ],
@@ -227,11 +233,11 @@ const en = {
   s5Point: "The pilot must measure installer time, support workload and profile-maintenance cost before launch pricing is set.",
   s5ChartCats: ["UFI Phone pilot target*", "Apple cellular premium ×10", "RingCentral Essentials ×10"],
   s5Caveat: "*Hypothesis, not a launched offer. Carrier plan, taxes and existing screens are excluded. The products do not provide the same feature set.",
-  s6Title: "Uzbekistan beachhead and go-to-market",
+  s6Title: "Uzbekistan launch market",
   s6Subtitle: "Start with one tested operator and one exact device profile",
   s6Market: "36.35M",
   s6MarketLabel: "mobile subscriptions in Uzbekistan as of 1 April 2025",
-  s6UseLabel: "BEACHHEAD USERS",
+  s6UseLabel: "INITIAL USERS",
   s6Use1: "Retail and service desks using one public number on existing Wi-Fi screens",
   s6Use2: "Campus offices and labs that need a departmental SIM on tablets and PCs",
   s6Use3: "Field sites where a fixed PBX or a full UCaaS suite is disproportionate",
@@ -241,15 +247,15 @@ const en = {
   s7Subtitle: "VoLTE on the operator network is separate from IMS support inside this UFI003",
   s7Headers: ["Operator", "Network evidence", "UFI003 evidence", "Commercial claim"],
   s7Rows: [
-    ["Ucell", "Official VoLTE offer", "Tested: LTE data, SMS, calls and two-way audio; voice falls back to WCDMA/HSPA", "Reference operator"],
+    ["Ucell", "Official VoLTE offer", "Tested: LTE data, SMS, calls and two-way audio. Voice falls back to WCDMA/HSPA", "Reference operator"],
     ["Mobiuz", "VoLTE page documents 2G/3G fallback", "No project SIM test yet", "Validate SIM and tariff"],
     ["Uzmobile", "VoLTE page documents 2G/3G handover", "No project SIM test yet", "Validate SIM, APN and LTE return"],
-    ["Beeline", "VoLTE for compatible USIM and device", "Modem IMS unusable; circuit-switched path untested", "Validate intended tariff"],
+    ["Beeline", "VoLTE for compatible USIM and device", "Modem IMS unusable. Circuit-switched path untested", "Validate intended tariff"],
     ["Humans", "Mobile service uses the Uzmobile network", "MVNO provisioning remains untested", "Test separately"],
     ["Perfectum", "CDMA and 5G SA/VoNR device paths", "Incompatible with this exact UFI003", "Unsupported on this hardware"],
   ],
   s8Title: "90-day commercialization plan",
-  s8Subtitle: "Release packaging is ready; operator acceptance and publisher prerequisites now determine the pilot",
+  s8Subtitle: "Release packaging is ready. Operator acceptance and publisher prerequisites now determine the pilot",
   s8P1: "DAYS 0–30",
   s8P1Title: "Release and measure",
   s8P1Text: "Play account, support email and upload key\nPlay App Signing and store declarations\n12 testers for 14 days if the new-account rule applies\nSigned release tag with synthetic assets",
@@ -258,7 +264,7 @@ const en = {
   s8P2Text: "Mobiuz, Uzmobile, Beeline and Humans\nSIM and tariff matrix\nTen cold boots per operator\nCalls, audio, SMS and return to LTE",
   s8P3: "DAYS 61–90",
   s8P3Title: "Pilot and expand",
-  s8P3Text: "Three paid Ucell sites\nMeasure setup, missed events and support\nPolish Phone UX/calls; profile a second modem\nStart the macOS protocol package",
+  s8P3Text: "Three paid Ucell sites\nMeasure setup, missed events and support\nImprove Phone UX and calling\nProfile a second modem\nStart the macOS protocol package",
   s8Risk: "Commercial risks: 2G/3G fallback availability, operator and tariff approval, privileged gateway signing, and Play review.",
   s8AppleLabel: "APPLE ROADMAP",
   s8Apple: "macOS first. iPadOS follows for foreground calls and SMS. Reliable background ringing needs compliant push and adds a cloud dependency.",
@@ -274,21 +280,21 @@ const ru = {
   coverLine1: "Проверенный профиль UFI003 в сети Ucell",
   coverLine2: "Релизные сборки для Android, Linux и Windows",
   coverMeta: "Стартап-питч для TUIT  /  24 сентября 2026",
-  s2Title: "Что уже работает в v0.5.0",
-  s2Subtitle: "Локальный шлюз закрывает полный цикл обычных звонков и SMS",
-  s2CallsLabel: "ЗВОНКИ",
+  s2Title: "UFI Phone в работе",
+  s2Subtitle: "Реальные снимки настольного клиента: звонки и SMS остаются в локальной сети модема",
+  s2CallsLabel: "ЗВОНКИ И ИСТОРИЯ",
   s2CallsBig: "Дуплекс",
-  s2CallsText: "Входящие и исходящие вызовы, ответ, завершение и двусторонний звук.",
+  s2CallsText: "Ответ, завершение, двусторонний звук и до 100 последних вызовов.",
   s2CallsNote: "Готовы экран входящего вызова и локальная история.",
-  s2SmsLabel: "СООБЩЕНИЯ",
+  s2SmsLabel: "SMS НАПРЯМУЮ",
   s2SmsBig: "Локально",
-  s2SmsText: "Получение, чтение и отправка SMS напрямую по частной сети модема.",
+  s2SmsText: "Чтение и отправка сообщений через защищённую частную сеть.",
   s2SmsNote: "Telegram не обязателен и по умолчанию отключён.",
-  s2Bottom: "Контроль режима сети и автоматическое восстановление сохраняют готовность к входящим вызовам после перезагрузки.",
-  s3Title: "Архитектура с доказанными границами",
+  s2Bottom: "Снимки получены из клиента для Linux с синтетическими демонстрационными данными; данные клиентов не показаны.",
+  s3Title: "Архитектура продукта и технические границы",
   s3Subtitle: "Проверенный UFI003 управляет SIM, радиорежимом, вызовами и хранилищем SMS",
   s3Network: "Мобильная\nсеть",
-  s3Modem: "Проверенный UFI003\nSIM • радио • шлюз",
+  s3Modem: "Проверенный UFI003\nSIM, радио и шлюз",
   s3Lan: "Защищённая\nлокальная сеть",
   s3Android: "Android",
   s3Linux: "Linux",
@@ -298,11 +304,11 @@ const ru = {
   s3Scope: "Границы: только неэкстренные вызовы, один активный разговор и один аудиоклиент.",
   s3Guard: "Защищённый установщик принимает только точный профиль UFI003. Похожее оборудование отклоняется.",
   s4Title: "Релизные сборки и готовность платформ",
-  s4Subtitle: "Коммит 116de47 создал три артефакта в успешном запуске GitHub Actions",
+  s4Subtitle: "Артефакты подтверждены на 116de47, а продукт и презентация актуальны на 3cd8b56",
   s4Headers: ["Платформа", "Что поставляется", "Подтверждение сборки", "Оставшееся условие"],
   s4Rows: [
-    ["Android", "UFI Phone v0.5.0: адаптивные Calls, Keypad и Messages; исправлена клавиатура в альбомном режиме", "Собран AAB для API 36", "Аккаунт издателя, ключ загрузки, формы Play и закрытый тест при необходимости"],
-    ["Linux", "Настольные звонки, SMS, история и двусторонний звук", "Собран x86_64-файл", "Проверка установщика и поддержки на целевых дистрибутивах"],
+    ["Android", "UFI Phone v0.5.0: адаптивные Calls, Keypad и Messages. Исправлена клавиатура в альбомном режиме", "Собран AAB для API 36", "Аккаунт издателя, ключ загрузки, формы Play и закрытый тест при необходимости"],
+    ["Linux", "Настольные звонки, SMS, история, двусторонний звук и ярлык в меню приложений", "Собран x86_64-файл", "Проверка поддержки на целевых дистрибутивах Linux"],
     ["Windows", "Переносимое приложение со звонками, SMS, историей и PortAudio", "Собран x86_64-файл", "Подпись установщика и проверка поддержки"],
     ["Шлюз UFI003", "Device doctor, защищённый установщик, звонки, SMS, звук и восстановление сети", "Проверен точный профиль", "Похожие устройства пока отклоняются"],
   ],
@@ -329,15 +335,15 @@ const ru = {
   s7Subtitle: "VoLTE в сети оператора не означает поддержку IMS внутри этого UFI003",
   s7Headers: ["Оператор", "Данные о сети", "Данные по UFI003", "Коммерческое заявление"],
   s7Rows: [
-    ["Ucell", "Официальная услуга VoLTE", "Проверены LTE, SMS, звонки и двусторонний звук; голос уходит в WCDMA/HSPA", "Опорный оператор"],
+    ["Ucell", "Официальная услуга VoLTE", "Проверены LTE, SMS, звонки и двусторонний звук. Голос уходит в WCDMA/HSPA", "Опорный оператор"],
     ["Mobiuz", "Страница VoLTE описывает возврат в 2G/3G", "SIM проекта ещё не проверена", "Проверить SIM и тариф"],
     ["Uzmobile", "Страница VoLTE описывает переход в 2G/3G", "SIM проекта ещё не проверена", "Проверить SIM, APN и возврат в LTE"],
-    ["Beeline", "VoLTE для совместимых USIM и устройств", "IMS модема не работает; обычный голосовой путь не проверен", "Проверить нужный тариф"],
+    ["Beeline", "VoLTE для совместимых USIM и устройств", "IMS модема не работает. Обычный голосовой путь не проверен", "Проверить нужный тариф"],
     ["Humans", "Сервис работает в сети Uzmobile", "Настройки MVNO ещё не проверены", "Тестировать отдельно"],
     ["Perfectum", "CDMA и устройства 5G SA/VoNR", "Несовместимо с этим точным UFI003", "Не поддерживается этим модемом"],
   ],
   s8Title: "План коммерциализации на 90 дней",
-  s8Subtitle: "Релизные сборки готовы; пилот теперь зависит от операторских тестов и условий публикации",
+  s8Subtitle: "Релизные сборки готовы. Пилот теперь зависит от операторских тестов и условий публикации",
   s8P1: "ДНИ 0–30",
   s8P1Title: "Релиз и измерения",
   s8P1Text: "Аккаунт Play, служебная почта и ключ загрузки\nPlay App Signing и формы магазина\n12 тестировщиков на 14 дней, если правило применимо\nПодписанный релиз и синтетические материалы",
@@ -346,7 +352,7 @@ const ru = {
   s8P2Text: "Mobiuz, Uzmobile, Beeline и Humans\nМатрица SIM и тарифов\nДесять холодных запусков на оператора\nЗвонки, звук, SMS и возврат в LTE",
   s8P3: "ДНИ 61–90",
   s8P3Title: "Пилот и расширение",
-  s8P3Text: "Три платные площадки Ucell\nМетрики установки, пропусков и поддержки\nДоработать интерфейс Phone и звонки; профиль второго модема\nСтарт общего протокола для macOS",
+  s8P3Text: "Три платные площадки Ucell\nМетрики установки, пропусков и поддержки\nДоработать интерфейс Phone и звонки\nПрофиль второго модема\nСтарт общего протокола для macOS",
   s8Risk: "Коммерческие риски: доступность 2G/3G, согласование оператора и тарифа, привилегированная подпись шлюза и проверка Google Play.",
   s8AppleLabel: "ПЛАН APPLE",
   s8Apple: "Сначала macOS. Затем iPadOS для звонков и SMS на переднем плане. Надёжный фон требует корректного push-сервиса и добавляет облачную зависимость.",
@@ -370,26 +376,59 @@ function buildDeck(t) {
     addText(s, t.coverLine2, 74, 454, 540, 54, { fontSize: 21, color: "#C6D8DF" });
     addText(s, t.coverMeta, 74, 642, 540, 28, { fontSize: 16, color: "#9EB5C0" });
     addText(s, t.lang, 1180, 52, 46, 26, { fontSize: 15, bold: true, color: C.white, alignment: "right" });
-    addNotes(s, `${t.lang === "EN" ? "Product evidence" : "Доказательства продукта"}: UFI Phone v0.5.0 at commit ${COMMIT}. The repository documents direct local SMS, incoming and outgoing ordinary carrier calls, two-way audio, call history, incoming-call UI, radio-mode recovery, Android, Linux and Windows clients.\n${SOURCES.commit}\n${SOURCES.readme}\n\nThe cover illustration contains no customer data and does not depict the tested physical device.`);
+    addNotes(s, `${t.lang === "EN" ? "Product evidence" : "Доказательства продукта"}: UFI Phone v0.5.0 at repository commit ${CURRENT_COMMIT}. The repository documents direct local SMS, incoming and outgoing ordinary carrier calls, two-way audio, call history, incoming-call UI, radio-mode recovery, Android, Linux and Windows clients.\n${SOURCES.currentCommit}\n${SOURCES.readme}\n\nThe cover illustration contains no customer data and does not depict the tested physical device.`);
   }
   {
     const s = p.slides.add();
     s.background.fill = C.paper;
     addHeader(s, t.s2Title, 2, false, t.s2Subtitle);
-    const divider = s.shapes.add({ geometry: "line", position: { left: 640, top: 205, width: 0, height: 338 }, fill: "none", line: { style: "solid", fill: C.line, width: 1.5 } });
-    divider.sendToBack();
-    addSectionLabel(s, t.s2CallsLabel, 70, 208, C.cyan2);
-    addText(s, t.s2CallsBig, 68, 242, 490, 108, { fontSize: t.lang === "RU" ? 66 : 82, bold: true, color: C.ink, lineSpacing: 0.88 });
-    addText(s, t.s2CallsText, 72, 356, 485, 94, { fontSize: 21, color: C.ink, lineSpacing: 1.08 });
-    addText(s, t.s2CallsNote, 72, 466, 485, 60, { fontSize: 18, bold: true, color: C.cyan2, lineSpacing: 1.04 });
-    addSectionLabel(s, t.s2SmsLabel, 704, 208, C.blue);
-    addText(s, t.s2SmsBig, 704, 242, 480, 108, { fontSize: t.lang === "RU" ? 62 : 78, bold: true, color: C.ink, lineSpacing: 0.88 });
-    addText(s, t.s2SmsText, 708, 356, 480, 94, { fontSize: 21, color: C.ink, lineSpacing: 1.08 });
-    addText(s, t.s2SmsNote, 708, 466, 480, 60, { fontSize: 18, bold: true, color: C.blue, lineSpacing: 1.04 });
-    addBox(s, 64, 568, 1152, 78, C.navy, { borderRadius: "rounded-xl" });
-    addText(s, t.s2Bottom, 92, 583, 1096, 52, { fontSize: t.lang === "RU" ? 20 : 21, bold: true, color: C.white, verticalAlignment: "middle", alignment: "center", lineSpacing: 1.0 });
+    addBox(s, 60, 190, 562, 382, C.white, {
+      line: { style: "solid", fill: C.line, width: 1 },
+      borderRadius: "rounded-lg",
+      shadow: "shadow-md",
+    });
+    addBox(s, 658, 190, 562, 382, C.white, {
+      line: { style: "solid", fill: C.line, width: 1 },
+      borderRadius: "rounded-lg",
+      shadow: "shadow-md",
+    });
+    s.images.add({
+      blob: callsScreenshotBytes,
+      contentType: "image/png",
+      alt: "Actual UFI Phone desktop Calls and Recent calls screen with synthetic demonstration records",
+      fit: "contain",
+      position: { left: 66, top: 196, width: 550, height: 366 },
+    });
+    s.images.add({
+      blob: messagesScreenshotBytes,
+      contentType: "image/png",
+      alt: "Actual UFI Phone desktop Messages screen with synthetic demonstration messages",
+      fit: "contain",
+      position: { left: 664, top: 196, width: 550, height: 366 },
+    });
+    addSectionLabel(s, t.s2CallsLabel, 66, 582, C.cyan2);
+    addText(s, t.s2CallsText, 66, 608, 550, 42, {
+      fontSize: t.lang === "RU" ? 14.8 : 15.5,
+      bold: true,
+      color: C.ink,
+      lineSpacing: 1.03,
+    });
+    addSectionLabel(s, t.s2SmsLabel, 664, 582, C.blue);
+    addText(s, t.s2SmsText, 664, 608, 550, 42, {
+      fontSize: t.lang === "RU" ? 14.8 : 15.5,
+      bold: true,
+      color: C.ink,
+      lineSpacing: 1.03,
+    });
+    addRule(s, 66, 653, 1148, C.line, 1);
+    addText(s, t.s2Bottom, 66, 660, 1148, 18, {
+      fontSize: t.lang === "RU" ? 10.5 : 11.5,
+      color: C.gray,
+      alignment: "center",
+      verticalAlignment: "middle",
+    });
     addFooter(s, 2, false, t.lang);
-    addNotes(s, `${t.lang === "EN" ? "Repository evidence" : "Данные репозитория"}: direct local SMS receive/read/send, incoming and outgoing ordinary carrier calls, two-way audio, incoming-call UI, call history, network-mode health and recovery. Telegram remains an optional compatibility path and the installer leaves it disabled.\n${SOURCES.readme}\n${SOURCES.productVision}\n\nNo real phone numbers, SMS content, tokens or private screenshots are included in this deck.`);
+    addNotes(s, `${t.lang === "EN" ? "Product capture and repository evidence" : "Снимки продукта и данные репозитория"}: the two images are direct captures of the shipped Linux desktop client in desktop/ufi_phone_desktop.py. The capture harness disables network polling and injects clearly synthetic call and message records; no gateway token, private configuration, real phone number or customer message is used.\n\nThe interface supports direct local SMS receive/read/send, incoming and outgoing ordinary carrier calls, two-way audio and up to 100 local call-history entries. Telegram remains an optional compatibility path and the installer leaves it disabled.\n${SOURCES.readme}\n${SOURCES.productVision}`);
   }
   {
     const s = p.slides.add();
@@ -433,7 +472,7 @@ function buildDeck(t) {
       }
     }
     addFooter(s, 4, false, t.lang);
-    addNotes(s, `${t.lang === "EN" ? "Build evidence" : "Подтверждение сборок"}: GitHub Actions run #3 for commit 116de47 finished successfully and produced three artifacts: Android AAB (660 KB), Linux x86_64 executable (23 MB) and Windows x86_64 executable (11.9 MB).\n${SOURCES.actions}\n${SOURCES.commit}\n\nAndroid targets API 36. The repository contains the responsive Google-style Calls, Keypad and Messages interface, including the corrected landscape keypad. Only the ordinary Android companion belongs in Google Play; the privileged modem gateway remains behind the exact-profile installer.\n${SOURCES.playChecklist}\n${SOURCES.profileGuide}`);
+    addNotes(s, `${t.lang === "EN" ? "Build evidence" : "Подтверждение сборок"}: GitHub Actions run #3 for build commit ${BUILD_COMMIT} finished successfully and produced three artifacts: Android AAB (660 KB), Linux x86_64 executable (23 MB) and Windows x86_64 executable (11.9 MB).\n${SOURCES.actions}\n${SOURCES.buildCommit}\n\nThe current repository state is ${CURRENT_COMMIT}. It consolidates the product, presentation source and release-artifact documentation in one workspace.\n${SOURCES.currentCommit}\n\nAndroid targets API 36. The repository contains the responsive Google-style Calls, Keypad and Messages interface, including the corrected landscape keypad. Only the ordinary Android companion belongs in Google Play. The privileged modem gateway remains behind the exact-profile installer.\n${SOURCES.playChecklist}\n${SOURCES.profileGuide}`);
   }
   {
     const s = p.slides.add();
@@ -449,7 +488,7 @@ function buildDeck(t) {
     applyPresentationChartFont(chart, { fontFamily: FONT });
     addText(s, t.s5Caveat, 470, 597, 730, 56, { fontSize: 13, color: C.gray, lineSpacing: 1.0 });
     addFooter(s, 5, false, t.lang);
-    addNotes(s, `${t.lang === "EN" ? "Sources and assumptions" : "Источники и допущения"}:\n- Apple currently shows a $150 difference between Wi-Fi and Wi-Fi + Cellular at the same base iPad storage tier; 10 × $150 = $1,500. ${SOURCES.applePrice}\n- RingCentral Essentials starts at $19.99 per user each month with annual billing; 10 × $19.99 × 12 = $2,398.80, rounded to $2,399. ${SOURCES.ringcentral}\n- UFI Phone pilot pricing remains a hypothesis: $49 starter kit + $3 × 10 active devices × 12 months = $409 in year one. The $10 modem price is the founder's purchase price and is not a supplier quote or validated scalable BOM.\n\nThis compares budget anchors rather than equivalent products. RingCentral includes a broad UCaaS feature set; cellular iPad pricing buys data connectivity rather than this local carrier-call gateway.`);
+    addNotes(s, `${t.lang === "EN" ? "Sources and assumptions" : "Источники и допущения"}:\n- Apple showed a $150 difference between Wi-Fi and Wi-Fi + Cellular at the same base iPad storage tier on 24 September 2026. Ten devices add $1,500. ${SOURCES.applePrice}\n- RingCentral Essentials started at $19.99 per user each month with annual billing on 24 September 2026. Ten users for 12 months cost $2,398.80, rounded to $2,399. ${SOURCES.ringcentral}\n- UFI Phone pilot pricing remains a hypothesis: $49 starter kit + $3 × 10 active devices × 12 months = $409 in year one. The $10 modem price is the founder's purchase price and is not a supplier quote or validated scalable BOM.\n\nThis compares budget anchors rather than equivalent products. RingCentral includes a broad UCaaS feature set. Cellular iPad pricing buys data connectivity rather than this local carrier-call gateway.`);
   }
   {
     const s = p.slides.add();
@@ -561,6 +600,6 @@ async function finalizeDeck(t, outName) {
 }
 
 const results = [];
-results.push(await finalizeDeck(en, "UFI_Phone_v0.5.0_TUIT_Startup_Pitch_EN_FINAL.pptx"));
-results.push(await finalizeDeck(ru, "UFI_Phone_v0.5.0_TUIT_Startup_Pitch_RU_FINAL.pptx"));
+results.push(await finalizeDeck(en, "UFI_Phone_v0.5.0_TUIT_Startup_Pitch_EN_WITH_SCREENSHOTS.pptx"));
+results.push(await finalizeDeck(ru, "UFI_Phone_v0.5.0_TUIT_Startup_Pitch_RU_WITH_SCREENSHOTS.pptx"));
 console.log(JSON.stringify(results, null, 2));
