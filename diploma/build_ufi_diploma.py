@@ -90,7 +90,7 @@ TABLES = {
             ["FR-04", "Синхронизировать и отправлять SMS", "До 250 сообщений доступны по диалогам, Unicode сохраняется"],
             ["FR-05", "Сохранять локальную историю", "До 100 вызовов с временем, результатом и длительностью"],
             ["FR-06", "Автоматически запускаться после перезагрузки", "Шлюз, guard и монитор восстанавливают работу"],
-            ["FR-07", "Безопасно устанавливать компоненты", "Неизвестный профиль отвергается до привилегированной установки"],
+            ["FR-07", "Безопасно устанавливать компоненты", "Guided setup показывает план; exact-match обязателен, а dry-run ничего не изменяет"],
             ["FR-08", "Работать без обязательного облачного сервиса", "Основные вызовы и SMS остаются в частной LAN"],
         ],
         "widths": [1.6, 6.0, 7.9],
@@ -117,7 +117,7 @@ TABLES = {
             ["Voice Gateway", "Android 4.4, uid system", "Вызовы, SMS, состояние и три LAN-сокета"],
             ["UFI Phone Android", "Android 8+", "Calls, Keypad, Messages, уведомления и звук"],
             ["Desktop client", "Linux/Windows", "Полный интерфейс, история и локальный аудиобэкенд"],
-            ["ufi_setup.py", "Linux/Windows с ADB", "Doctor, exact-match профиль, сборка и парное развёртывание"],
+            ["setup.sh / ufi_setup.py", "Linux с ADB", "Автовыбор exact-match, план, сборка, установка, pairing и проверка"],
             ["ufi_voice.py", "Python", "Настройка, status, CLI и запуск desktop UI"],
             ["ufi_sms.py", "Linux/PyUSB", "Резервная работа с SMS через USB AT-интерфейс"],
             ["Telegram forwarder", "Android 4.4, опционально", "Совместимый облачный путь с устойчивой очередью"],
@@ -143,7 +143,7 @@ TABLES = {
         "rows": [
             ["Команда от постороннего клиента", "Несанкционированный вызов или чтение SMS", "Private /24, nonce и HMAC для каждой сессии"],
             ["Повтор перехваченной команды", "Replay управления", "Свежий 32-байтный nonce и command binding"],
-            ["Утечка pairing token", "Доступ внутри LAN", "Генерация 256 бит, права пользователя, передача только через ADB"],
+            ["Утечка pairing token или .ufi-phone", "Доступ к шлюзу внутри LAN", "Первичная передача через ADB; явный экспорт 0600, проверка формата, приватный перенос и удаление"],
             ["Установка на похожий модем", "Bootloop или компрометация привилегий", "Exact-match профиль и проверка сертификата"],
             ["Набор экстренного номера", "Опасное ложное ожидание поддержки", "Emergency/service dialing блокируется"],
             ["Два аудиоклиента", "Смешение приватного разговора", "Atomic busy lock на uplink/downlink"],
@@ -153,14 +153,15 @@ TABLES = {
     },
     "tests": {
         "caption": "Результаты воспроизводимого тестового прогона",
-        "headers": ["Область", "Проверка", "Результат 25.09.2026"],
+        "headers": ["Область", "Проверка", "Результат 27.09.2026"],
         "rows": [
-            ["Android manifests", "Согласованность standalone/Gradle capabilities", "Пройдено"],
-            ["Desktop model", "Диалоги, непрочитанные, история и нормализация номера", "3 теста пройдены"],
+            ["Android manifests", "Согласованность standalone/Gradle capabilities", "1 тест пройден"],
+            ["Desktop model", "Ошибки соединения, диалоги, история, номера и pairing import", "7 тестов пройдены"],
+            ["Guided setup и pairing", "Автовыбор, ambiguity, refusal, private export и no-overwrite", "5 тестов пройдены"],
             ["Hardware profiles", "Точное совпадение и отказ near-match", "3 теста пройдены"],
-            ["SMS durability", "Границы polling, rotation и чтение архива", "2 теста пройдены"],
-            ["Voice protocol", "Challenge-response, payload, адрес и отказ plaintext", "3 теста пройдены"],
-            ["Итого unittest", "uv + pyusb 1.3.1", "12 из 12 пройдены за 1,022 с"],
+            ["SMS durability", "Границы polling, rotation и чтение архива", "3 теста пройдены"],
+            ["Voice protocol", "Challenge-response, payload, адрес и отказ plaintext", "4 теста пройдены"],
+            ["Итого unittest", "uv + pyusb 1.3.1", "23 из 23 пройдены за 1,522 с"],
             ["Project guard", "Версии, секреты, размеры и pins GitHub Actions", "Пройдено для версии 0.5.0"],
         ],
         "widths": [3.4, 7.2, 4.9],
@@ -209,27 +210,27 @@ TOC_ENTRIES = [
     (1, "1.6 Постановка задачи и требования", 19),
     (0, "ГЛАВА II. ПРОЕКТИРОВАНИЕ КОМПЛЕКСА UFI PHONE", 22),
     (1, "2.1 Пользователи, сценарии и границы системы", 22),
-    (1, "2.2 Компонентная архитектура", 23),
+    (1, "2.2 Компонентная архитектура", 24),
     (1, "2.3 Проектирование аппаратных профилей и установки", 26),
     (1, "2.4 Локальный протокол и модель состояний", 28),
     (1, "2.5 Проектирование голосового и аудиоканала", 30),
-    (1, "2.6 Проектирование SMS и пользовательских клиентов", 32),
-    (1, "2.7 Безопасность, приватность и надёжность", 34),
-    (0, "ГЛАВА III. РЕАЛИЗАЦИЯ И ТЕСТИРОВАНИЕ", 36),
-    (1, "3.1 Реализация doctor, профилей и безопасной установки", 36),
-    (1, "3.2 Реализация gateway и network guard", 37),
-    (1, "3.3 Реализация вызовов и двустороннего звука", 38),
-    (1, "3.4 Реализация SMS и клиентских интерфейсов", 39),
-    (1, "3.5 Desktop, упаковка и поставка", 40),
-    (1, "3.6 Тестирование и результаты", 42),
-    (1, "3.7 Ограничения, приёмка и развитие", 44),
-    (0, "ГЛАВА IV. БЕЗОПАСНОСТЬ ЖИЗНЕДЕЯТЕЛЬНОСТИ", 47),
-    (1, "4.1 Анализ условий труда и рисков", 47),
-    (1, "4.2 Эргономика и расчёт освещения", 48),
-    (1, "4.3 Электрическая, тепловая и пожарная безопасность", 50),
-    (1, "4.4 Радиочастотная и информационная безопасность", 51),
-    (0, "ЗАКЛЮЧЕНИЕ", 53),
-    (0, "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ", 55),
+    (1, "2.6 Проектирование SMS и пользовательских клиентов", 33),
+    (1, "2.7 Безопасность, приватность и надёжность", 35),
+    (0, "ГЛАВА III. РЕАЛИЗАЦИЯ И ТЕСТИРОВАНИЕ", 38),
+    (1, "3.1 Реализация doctor, профилей и безопасной установки", 38),
+    (1, "3.2 Реализация gateway и network guard", 39),
+    (1, "3.3 Реализация вызовов и двустороннего звука", 40),
+    (1, "3.4 Реализация SMS и клиентских интерфейсов", 41),
+    (1, "3.5 Desktop, упаковка и поставка", 43),
+    (1, "3.6 Тестирование и результаты", 44),
+    (1, "3.7 Ограничения, приёмка и развитие", 47),
+    (0, "ГЛАВА IV. БЕЗОПАСНОСТЬ ЖИЗНЕДЕЯТЕЛЬНОСТИ", 49),
+    (1, "4.1 Анализ условий труда и рисков", 49),
+    (1, "4.2 Эргономика и расчёт освещения", 50),
+    (1, "4.3 Электрическая, тепловая и пожарная безопасность", 52),
+    (1, "4.4 Радиочастотная и информационная безопасность", 53),
+    (0, "ЗАКЛЮЧЕНИЕ", 55),
+    (0, "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ", 57),
 ]
 
 
@@ -242,7 +243,7 @@ FIGURE_CAPTIONS = {
     "call_sequence": "Последовательность обработки входящего вызова",
     "audio": "Двусторонний аудиотракт между модемом и клиентом",
     "sms": "Поток получения, хранения и отображения SMS",
-    "ui": "Интерфейсы вызовов и сообщений UFI Phone",
+    "ui": "Интерфейсы вызовов, сообщений и подключения UFI Phone",
     "deployment": "Варианты поставки компонентов комплекса",
     "quality": "Контуры проверки версии 0.5.0",
 }
@@ -581,18 +582,19 @@ def make_figures() -> dict[str, Path]:
         base.arrow(d, (555, y), (755, y))
         d.text((565, y - 55), label, font=small, fill="#244A66")
     base.arrow(d, (1190, 550), (1390, 550))
-    d.text((110, 890), "ADB shell-only receivers configure secrets; clients outside /24 are rejected before command handling", font=small, fill="#244A66")
+    d.text((110, 870), "Первичное pairing выполняется через ADB; .ufi-phone создаётся только явным экспортом", font=small, fill="#244A66")
+    d.text((110, 920), "Клиенты вне private /24 отклоняются до обработки команд", font=small, fill="#244A66")
     p = WORK_DIR / "figure_trust.png"
     img.save(p, quality=95)
     figures["trust"] = p
 
     img, d = base.new_canvas("Профильная установка")
     nodes = [
-        (80, 230, 380, 440, "ufi_setup.py\ndoctor\nread-only"),
-        (500, 230, 800, 440, "Сбор whitelist:\nproduct, SDK,\nbaseband, USB, LAN"),
-        (920, 230, 1220, 440, "Exact match\nhardware-profiles.json"),
-        (1340, 150, 1710, 360, "MATCH\nсборка и проверка\nсертификата"),
-        (1340, 570, 1710, 780, "NO MATCH\nотказ до установки\nprivileged APK"),
+        (80, 230, 380, 440, "./setup.sh\nпоиск устройств\nи план"),
+        (500, 230, 800, 440, "Doctor whitelist:\nproduct, SDK,\nbaseband, USB, LAN"),
+        (920, 230, 1220, 440, "Exact match\n+ один планшет\nAndroid 8+"),
+        (1340, 150, 1710, 360, "MATCH\nbuild · install\npair · verify"),
+        (1340, 570, 1710, 780, "NO MATCH / ambiguity\nотказ до установки\nprivileged APK"),
     ]
     colors = ["#F8FBFD", "#EAF2F8", "#DCEAF3", "#DFF2E5", "#FDE7E7"]
     outlines = ["#315F7D", "#315F7D", "#315F7D", "#2D7A47", "#A33A3A"]
@@ -602,7 +604,7 @@ def make_figures() -> dict[str, Path]:
     base.arrow(d, (800, 335), (920, 335))
     base.arrow(d, (1220, 300), (1340, 255))
     base.arrow(d, (1220, 390), (1340, 675), color="#A33A3A")
-    _box(d, (500, 690, 1220, 915), "После MATCH: Network Guard + Voice Gateway → modem\nUFI Phone → tablet · token → только через ADB\nTelegram остаётся выключенным", regular, fill="#F8FBFD")
+    _box(d, (500, 690, 1220, 930), "После MATCH: Network Guard + Voice Gateway → modem\nUFI Phone → tablet · primary pairing → ADB\nДополнительный desktop → явный .ufi-phone export\nTelegram остаётся выключенным", regular, fill="#F8FBFD")
     p = WORK_DIR / "figure_install.png"
     img.save(p, quality=95)
     figures["install"] = p
@@ -668,13 +670,17 @@ def make_figures() -> dict[str, Path]:
 
     calls = Image.open(ASSET_DIR / "ufi-app-calls.png").convert("RGB")
     messages = Image.open(ASSET_DIR / "ufi-app-messages.png").convert("RGB")
-    canvas, d = base.new_canvas("Интерфейс UFI Phone", size=(1800, 1120))
-    calls = ImageOps.contain(calls, (760, 770), Image.Resampling.LANCZOS)
-    messages = ImageOps.contain(messages, (760, 770), Image.Resampling.LANCZOS)
-    canvas.paste(ImageOps.expand(calls, border=4, fill="#9FB6C5"), (95, 220))
-    canvas.paste(ImageOps.expand(messages, border=4, fill="#9FB6C5"), (945, 220))
-    d.text((95, 175), "Вызовы и готовность сети", font=regular, fill="#244A66")
-    d.text((945, 175), "Диалоги и отправка SMS", font=regular, fill="#244A66")
+    setup = Image.open(ASSET_DIR / "ufi-app-setup.png").convert("RGB")
+    canvas, d = base.new_canvas("Интерфейс UFI Phone", size=(1800, 1450))
+    calls = ImageOps.contain(calls, (760, 507), Image.Resampling.LANCZOS)
+    messages = ImageOps.contain(messages, (760, 507), Image.Resampling.LANCZOS)
+    setup = ImageOps.contain(setup, (760, 507), Image.Resampling.LANCZOS)
+    canvas.paste(ImageOps.expand(calls, border=4, fill="#9FB6C5"), (95, 210))
+    canvas.paste(ImageOps.expand(messages, border=4, fill="#9FB6C5"), (945, 210))
+    canvas.paste(ImageOps.expand(setup, border=4, fill="#9FB6C5"), (520, 835))
+    d.text((95, 165), "Вызовы и готовность сети", font=regular, fill="#244A66")
+    d.text((945, 165), "Диалоги и отправка SMS", font=regular, fill="#244A66")
+    d.text((520, 790), "Guided Connection и импорт .ufi-phone", font=regular, fill="#244A66")
     p = WORK_DIR / "figure_ui.png"
     canvas.save(p, quality=95)
     figures["ui"] = p
@@ -692,7 +698,7 @@ def make_figures() -> dict[str, Path]:
     figures["deployment"] = p
 
     img, d = base.new_canvas("Проверка версии 0.5.0")
-    _box(d, (100, 235, 780, 850), "Автоматические проверки\n\n12 / 12 unittest passed\n1,022 s\n\nmanifest consistency\nmodel and history\nprofile rejection\nSMS durability\nvoice protocol", bold, fill="#DFF2E5", outline="#2D7A47")
+    _box(d, (100, 210, 780, 875), "Автоматические проверки\n\n23 / 23 unittest passed\n1,522 s\n\nmanifest consistency\ndesktop model + pairing import\nguided setup + private export\nhardware profile rejection\nSMS durability\nvoice protocol", bold, fill="#DFF2E5", outline="#2D7A47")
     _box(d, (1020, 235, 1700, 850), "Repository guard\n\nversion 0.5.0 aligned\nsecret patterns checked\nfile sizes checked\nGitHub Actions pinned\n\nRESULT: PASSED", bold, fill="#EAF2F8", outline="#315F7D")
     base.arrow(d, (780, 540), (1020, 540))
     p = WORK_DIR / "figure_quality.png"
@@ -723,6 +729,7 @@ def build_body(doc: Document, figures: dict[str, Path]) -> None:
             if doc.paragraphs and doc.paragraphs[-1].text.strip():
                 doc.add_page_break()
             p = doc.add_paragraph(style="Heading 1")
+            p.paragraph_format.page_break_before = False
             base.parse_inline(p, block[2:].strip())
             continue
         if block.startswith("## "):
@@ -771,7 +778,7 @@ SOURCES = [
     ("Sommerville I. Software Engineering. 10th ed. Pearson, 2015. 816 p.", None),
     ("Pressman R. S., Maxim B. R. Software Engineering: A Practitioner’s Approach. 9th ed. McGraw-Hill, 2020. 704 p.", None),
     ("Bass L., Clements P., Kazman R. Software Architecture in Practice. 4th ed. Addison-Wesley, 2021. 464 p.", None),
-    ("UFI Phone. README и описание возможностей проекта. Локальная документация репозитория, версия 0.5.0, 2026.", None),
+    ("UFI Phone. README, setup guide и описание переносимого pairing. Локальная документация репозитория, версия 0.5.0, 2026.", None),
     ("UFI Phone. Product vision. Локальная архитектурная документация, редакция 2026.", None),
     ("UFI Phone. Adding support for another UFI modem. Руководство по аппаратным профилям, 2026.", None),
     ("UFI Phone. Uzbekistan market and operator compatibility. Исследование от 24.09.2026.", None),
@@ -784,8 +791,8 @@ SOURCES = [
 
 
 def add_bibliography(doc: Document) -> None:
-    doc.add_page_break()
     p = doc.add_paragraph(style="Heading 1")
+    p.paragraph_format.page_break_before = True
     base.parse_inline(p, "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ")
     for index, (text, url) in enumerate(SOURCES, 1):
         p = doc.add_paragraph()
@@ -840,7 +847,7 @@ def main() -> None:
     doc.core_properties.comments = ""
     doc.core_properties.last_modified_by = "Куватов Руслан Бахтиярович"
     doc.core_properties.created = datetime(2026, 9, 25)
-    doc.core_properties.modified = datetime(2026, 9, 26)
+    doc.core_properties.modified = datetime(2026, 9, 27)
     add_title_page(doc)
     add_assignment_page(doc)
     add_schedule_page(doc)
