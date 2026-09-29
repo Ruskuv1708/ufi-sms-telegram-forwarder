@@ -1,6 +1,6 @@
 # “Eng innovatsion g‘oya” — TATU arizasi uchun ishchi nusxa
 
-Holat: **Google Form’ga kiritilmagan va yuborilmagan**. Shaxsiy ma’lumotlar, tasdiqlar, smeta va Google Drive havolalari muallif tomonidan tekshirilishi kerak.
+Holat: **Google Form to‘liq to‘ldirilmagan va yuborilmagan**. Shaxsiy ma’lumotlar, tasdiqlar, smeta va Google Drive havolalari muallif tomonidan tekshirilishi kerak.
 
 ## 0. Ishtirok shartlari — muallif tasdiqlashi kerak
 
@@ -15,7 +15,7 @@ Rasmiy Nizom: https://lex.uz/uz/docs/8452392
 
 | Forma maydoni | Ishchi qiymat | Holat |
 |---|---|---|
-| Elektron pochta | `ruslankuvatov1708@gmail.com` | Muallif tasdiqladi; Google Form hozir boshqa akkauntda ochilgan, kiritishdan oldin akkauntni almashtirish kerak |
+| Elektron pochta | `ruslankuvatov1708@gmail.com` | Muallif tasdiqladi; formadagi qiymat mos |
 | F.I.Sh. (to‘liq) | `Kuvatov Ruslan Baxtiyarovich` | Muallif taqdim etgan rasmiy lotincha yozuv |
 | Tug‘ilgan sana | `17.08.2005` | Talaba profilidagi ma’lumot bilan tasdiqlandi |
 | Jinsi | `Erkak` | Talaba profilidagi “Мужской” qiymatidan olindi |
